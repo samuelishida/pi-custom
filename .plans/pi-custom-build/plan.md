@@ -150,7 +150,7 @@ for pi process isolation.
 - Inc 3 — `scripts/preinstall-bundle.sh` (M) — **done** — depends on: 2 — unblocks: 5
 - Inc 4 — Build standalone binary, install side-by-side (M) — **done** — depends on: 1 — unblocks: 5
 - Inc 5 — E2E verification (M) — **done** — depends on: 3, 4 — unblocks: 6
-- Inc 6 — Repo README (S) — depends on: 5 — unblocks: none
+- Inc 6 — Repo README (S) — **done** — depends on: 5 — unblocks: none
 
 ## Increments
 
@@ -374,6 +374,7 @@ plus `web_fetch`. Separate credentialed integration lane proves slash workflows.
 ### Inc 6 — Repo README (S)
 **Depends on:** 5
 **Unblocks:** none
+**Status:** done
 **Done criteria:** the repo README documents what is bundled, how to install,
 uninstall, and upgrade, and the optional browser/dictate/interactive-subagents
 requirements.
