@@ -1,4 +1,7 @@
 node_modules/
+gh_token.txt
+out/
+*.log
 dist/
 .artifacts/
 *.log
