@@ -13,7 +13,7 @@
     ]
   },
   "dependencies": {
-    "openai": "^6.44.0"
+    "openai": "6.49.0"
   },
   "devDependencies": {
     "@earendil-works/pi-coding-agent": "^0.84.0"

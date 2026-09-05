@@ -55,9 +55,9 @@
     }
   },
   "bundled": {
-    "extensionsTreeSha256": "bcdf5dd8ab971491b3ec88072a1c17c369e5f62c0c8fee2b18af020faaba591e",
+    "extensionsTreeSha256": "41de606b622be448f0b1a7b6a0e1d05ccbc391119fe2f1db4f27d56d587576f8",
     "agentsTreeSha256": "a3a6eeebbb743bde82252950baaef5090eaf7fe7c62d5878e9efccab601b6bea2",
-    "npmCacheTreeSha256": "b36d1aa4a02fae9e21d7c6e49a41bf8cd4c709f8b25c7362615bb94cf1449d12"
+    "npmCacheTreeSha256": "972353eb0de5e53e3f5b03df1c97c4dfc863284a33063f99cd3ccc3dcf1353dc"
   },
   "toolAdaptations": {
     "feynmanFetch": {

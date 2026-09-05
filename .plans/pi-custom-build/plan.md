@@ -235,6 +235,8 @@ and prompts; `bundle-manifest.json` lists every source with version/commit/SHA.
   }
   ```
 - Error paths: manifest must be valid JSON; the pre-install script validates it.
+  All vendored package direct dependencies are exact versions; npm cache and
+  package tarball hashes are committed and checked.
 
 #### Edge cases
 - `web-search/auth.json` (real credentials) must NOT be copied — only
@@ -245,6 +247,8 @@ and prompts; `bundle-manifest.json` lists every source with version/commit/SHA.
 
 #### Verification
 - Run: `find bundled -type f | sort` and `node -e "JSON.parse(require('fs').readFileSync('bundle-manifest.json'))"`.
+- Run: `npm run check:pinned-deps` after vendoring; vendored third-party trees
+  are excluded from project-only `.js` import lint.
 - Tests to add/update: none.
 - Done: all expected paths present; manifest parses; no `auth.json` present.
 
