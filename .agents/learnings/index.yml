@@ -1,0 +1,3 @@
+pi-custom-bundled-distribution:
+  file: pi-custom-bundled-distribution.md
+  description: Read when modifying the pi-custom vendored bundle, preinstall, Bun runtime, or E2E gates.
