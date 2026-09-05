@@ -148,7 +148,7 @@ for pi process isolation.
 - Inc 1 — Fork pi v0.85.1 into nonempty workspace, verify build (M) — **done** — depends on: none — unblocks: 2, 4
 - Inc 2 — Vendor `bundled/` resources + `bundle-manifest.json` (M) — **done** — depends on: 1 — unblocks: 3
 - Inc 3 — `scripts/preinstall-bundle.sh` (M) — **done** — depends on: 2 — unblocks: 5
-- Inc 4 — Build standalone binary, install side-by-side (M) — depends on: 1 — unblocks: 5
+- Inc 4 — Build standalone binary, install side-by-side (M) — **done** — depends on: 1 — unblocks: 5
 - Inc 5 — E2E verification (M) — depends on: 3, 4 — unblocks: 6
 - Inc 6 — Repo README (S) — depends on: 5 — unblocks: none
 
@@ -310,6 +310,7 @@ existing files, and removes the colliding package — with no errors.
 ### Inc 4 — Build standalone binary, install side-by-side (M)
 **Depends on:** 1
 **Unblocks:** 5
+**Status:** done
 **Done criteria:** a standalone `pi-custom` binary builds for linux-x64 and runs
 `--version` side-by-side with the existing `pi`.
 
