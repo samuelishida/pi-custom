@@ -149,7 +149,7 @@ for pi process isolation.
 - Inc 2 — Vendor `bundled/` resources + `bundle-manifest.json` (M) — **done** — depends on: 1 — unblocks: 3
 - Inc 3 — `scripts/preinstall-bundle.sh` (M) — **done** — depends on: 2 — unblocks: 5
 - Inc 4 — Build standalone binary, install side-by-side (M) — **done** — depends on: 1 — unblocks: 5
-- Inc 5 — E2E verification (M) — depends on: 3, 4 — unblocks: 6
+- Inc 5 — E2E verification (M) — **done** — depends on: 3, 4 — unblocks: 6
 - Inc 6 — Repo README (S) — depends on: 5 — unblocks: none
 
 ## Increments
@@ -337,6 +337,7 @@ existing files, and removes the colliding package — with no errors.
 ### Inc 5 — E2E verification (M)
 **Depends on:** 3, 4
 **Unblocks:** 6
+**Status:** done
 **Done criteria:** structural lane using fresh `PI_CODING_AGENT_DIR` loads every
 extension without import errors, lists all 19 skills, and registers `web_search`
 plus `web_fetch`. Separate credentialed integration lane proves slash workflows.
