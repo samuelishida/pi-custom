@@ -1,0 +1,21 @@
+{
+  "name": "pi-dictate",
+  "version": "1.0.6",
+  "description": "Voice dictation extension for Pi - speak into your mic, text appears in the editor",
+  "license": "MIT",
+  "files": [
+    "src",
+    "README.md"
+  ],
+  "pi": {
+    "extensions": [
+      "./src/index.ts"
+    ]
+  },
+  "dependencies": {
+    "openai": "^6.44.0"
+  },
+  "devDependencies": {
+    "@earendil-works/pi-coding-agent": "^0.84.0"
+  }
+}

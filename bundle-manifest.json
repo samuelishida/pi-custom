@@ -1,0 +1,69 @@
+{
+  "schema": 1,
+  "pi": {
+    "version": "0.85.1",
+    "tag": "v0.85.1",
+    "commit": "d981de1229ef899957bbe968bc8dcda02a21f477"
+  },
+  "sources": {
+    "guardrail": {
+      "path": "bundled/extensions/guardrail.ts",
+      "bytes": 44873,
+      "sha256": "02cad320d53128d77a5a7ca41583db3c50d572e2f5748db34ad97c5d438cd504"
+    },
+    "pi-config": {
+      "repo": "amosblomqvist/pi-config",
+      "commit": "f82da563ab05d66729492d64c7ed4e96db3663f3",
+      "treeSha256": "eb26e8bc97176598a2bb0db0cdf1117e48f584ffa93998e80be11e9532055e0f"
+    },
+    "hawk-skills-md": {
+      "repo": "samuelishida/hawk-skills-md",
+      "commit": "0b1de1405c52755f01c1f7ffa67a9a8a63a1b7ab",
+      "treeSha256": "742b893753960a518d05952c127f516f6253ac58f3aa1a13243c4844e05a853a"
+    },
+    "feynman": {
+      "app": "feynman-0.3.46-linux-x64",
+      "skillsTreeSha256": "d0c9c44ec6122a038d55a2846c6156cfa202245ed078abf7b6b1b68124bf8654",
+      "adaptedPrompts": {
+        "autoresearch.md": "5138460d5e44531b0b9e39560d5352d1247d072ee7ed5e88700dc617ae2fecd5",
+        "deepresearch.md": "1cd1d43925102fb4e81c4a1db482a67ea449c125875124d54497bbde954d9a08"
+      }
+    },
+    "npm": {
+      "pi-undo-redo": {
+        "version": "0.1.1",
+        "integrity": "sha512-ydgnLWuVjEZQJuPkZGyaK2UTbbs+n+xa8rL0xS3z9xrzIPWv//5dk3WeRThA6dF21cTbTj0SCjWCJj0G18JU9Q==",
+        "sha256": "d9c3b80670561f4fc64b2a4fda833ee40916482d0b992f1453f653a40a2ade74"
+      },
+      "pi-dictate": {
+        "version": "1.0.6",
+        "integrity": "sha512-HXeYcgFgrgiW5rwn4gwxRQrqCh7GFTfkjwWsyoIuQcfJ78ZULOiI8VxgzdK9d0b/9IBw62HKBnbuPLa2Ua1j0A==",
+        "sha256": "cfff5b66a9f3f8e9f3172ca32a0b81d76b8daaa69875a9ee09c684fb32c6211e"
+      },
+      "pi-observational-memory": {
+        "version": "3.0.4",
+        "integrity": "sha512-nxuhNbZf99YbGfhDX25Nl7BjPOY8H9Z2holhDsYZiI5jgsOgGSvwKssaTqNxwYZmR8c8l1g7/eNr9O96mbDpmg==",
+        "sha256": "af2741c6d65f3d6873ed05d0458ecad689b01a16600fdf1a650ba301b47d7756"
+      }
+    },
+    "git": {
+      "pi-interactive-subagents": {
+        "repo": "amosblomqvist/pi-interactive-subagents",
+        "commit": "c3e8b53c0754ae5ccc19fdab5a7481ec039bc2f7",
+        "treeSha256": "4d3fde70d867ee1bf152eace7c9656e16e3daff8b1bef2ecb238e7268858b5ef"
+      }
+    }
+  },
+  "bundled": {
+    "extensionsTreeSha256": "bcdf5dd8ab971491b3ec88072a1c17c369e5f62c0c8fee2b18af020faaba591e",
+    "agentsTreeSha256": "a3a6eeebbb743bde82252950baaef5090eaf7fe7c62d5878e9efccab601b6bea2",
+    "npmCacheTreeSha256": "b36d1aa4a02fae9e21d7c6e49a41bf8cd4c709f8b25c7362615bb94cf1449d12"
+  },
+  "toolAdaptations": {
+    "feynmanFetch": {
+      "from": "fetch_content",
+      "to": "web_fetch",
+      "parameters": "{url: string}"
+    }
+  }
+}

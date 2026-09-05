@@ -146,7 +146,7 @@ for pi process isolation.
 ## Increment DAG
 
 - Inc 1 — Fork pi v0.85.1 into nonempty workspace, verify build (M) — **done** — depends on: none — unblocks: 2, 4
-- Inc 2 — Vendor `bundled/` resources + `bundle-manifest.json` (M) — depends on: 1 — unblocks: 3
+- Inc 2 — Vendor `bundled/` resources + `bundle-manifest.json` (M) — **done** — depends on: 1 — unblocks: 3
 - Inc 3 — `scripts/preinstall-bundle.sh` (M) — depends on: 2 — unblocks: 5
 - Inc 4 — Build standalone binary, install side-by-side (M) — depends on: 1 — unblocks: 5
 - Inc 5 — E2E verification (M) — depends on: 3, 4 — unblocks: 6
@@ -192,6 +192,7 @@ tree is pi v0.85.1 while retaining `.plans/`; and
 ### Inc 2 — Vendor `bundled/` resources + `bundle-manifest.json` (M)
 **Depends on:** 1
 **Unblocks:** 3
+**Status:** done
 **Done criteria:** `bundled/` contains all in-scope extensions, skills, agents,
 and prompts; `bundle-manifest.json` lists every source with version/commit/SHA.
 
