@@ -5,12 +5,13 @@ prompt templates. Pi core remains unmodified.
 
 ## What is bundled
 
-- 12 extensions: guardrail, ask-user-question, custom-header, prompt-snippets,
+- 13 extensions: guardrail, ask-user-question, custom-header, prompt-snippets,
   bash-guard, browser, web-fetch, web-search, pi-undo-redo, pi-dictate,
-  pi-observational-memory, and pi-interactive-subagents.
+  pi-observational-memory, pi-interactive-subagents, and pi-diff.
 - 19 skills: 17 hawk-skills-md skills plus Feynman's `autoresearch` and
   `deep-research` skills.
-- Seven hawk agent markdown files.
+- Ten agent markdown files: seven hawk audit/planning agents plus Feynman's
+  `researcher`, `verifier`, and `reviewer` profiles.
 - `/autoresearch` and `/deepresearch` prompt templates.
 - pi-config Web Tools: `web_search` and `web_fetch`.
 
@@ -40,7 +41,8 @@ PI_CODING_AGENT_DIR=/tmp/pi-agent bash scripts/preinstall-bundle.sh
 The compatibility alias `PI_AGENT_DIR` is accepted with a warning. Each
 extension is installed as a direct child of `extensions/`; dependencies stay in
 that extension's local `node_modules` and install from the committed offline
-cache. Installer removes `npm:@ollama/pi-web-search` from `settings.json` after
+cache. Installer verifies bundle tree digests before staging, then removes
+`npm:@ollama/pi-web-search` from `settings.json` after
 backing it up, so pi-config owns `web_search`.
 
 Chromium is optional:
@@ -51,6 +53,16 @@ bash scripts/preinstall-bundle.sh --with-browser
 
 This downloads Chromium through the pinned Playwright CLI. Browser extension
 loading does not require Chromium; browser calls do.
+
+`pi-diff` is enabled by default. It wraps pi `write`/`edit` output with
+syntax-highlighted unified or split diffs. Configure it with the bundled
+`pi-diff.example.json` and `pi-diff.schema.json` references, or disable tools
+using pi-diff's documented settings.
+
+The autoresearch workflow uses `researcher`, `verifier`, and `reviewer` when
+available. Its final cited brief belongs in `outputs/` with a matching
+`.provenance.md` sidecar; session state is recorded in `autoresearch.md`,
+`autoresearch.sh`, and `autoresearch.jsonl`.
 
 `build-custom.sh` installs a runtime bundle under
 `~/.local/share/pi-custom/` and a `~/.local/bin/pi-custom` symlink. Existing

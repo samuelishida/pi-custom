@@ -3,6 +3,9 @@ gh_token.txt
 out/
 *.log
 dist/
+!bundled/extensions/pi-diff/
+!bundled/extensions/pi-diff/dist/
+!bundled/extensions/pi-diff/dist/**
 .artifacts/
 *.log
 .DS_Store

@@ -24,6 +24,21 @@
     "feynman": {
       "app": "feynman-0.3.46-linux-x64",
       "skillsTreeSha256": "d0c9c44ec6122a038d55a2846c6156cfa202245ed078abf7b6b1b68124bf8654",
+      "agentsTreeSha256": "53eb8696f1948e4b0a4680204edc83f610898bcbab3d9f6eb22524c2b4774c9b",
+      "agents": {
+        "researcher.md": "6cf3fbbacd1c4a6094619991c1330c6168c3a3a3f4c14dedb76466e32c8c209d",
+        "verifier.md": "95fd70bd6a575379da835f5698cfb21c4ca8b4e45fa076be857acad73dd8c472",
+        "reviewer.md": "4caa4527b66744bed6d5d2e2865301b910cba1df48743ef27f8950f7860665e0"
+      },
+      "adaptedAgents": {
+        "researcher.md": "e336b374816141982212c15abda906fe2858a2def23b1b16c7eecba80838aa99",
+        "verifier.md": "124bf33518d781914cfc1b4beb5cbf3da3f928345b38ce4bbb84b3f9100948f2",
+        "reviewer.md": "504fe3a96da2dc2aafa429d9ef4fe61ffc64cedb7dbedab662d4433ed604e96c"
+      },
+      "agentAdaptations": {
+        "fetch_content": "web_fetch",
+        "unavailableTools": ["get_search_content", "hf_dataset_info", "hf_repo_files", "hf_repo_read_file"]
+      },
       "adaptedPrompts": {
         "autoresearch.md": "5138460d5e44531b0b9e39560d5352d1247d072ee7ed5e88700dc617ae2fecd5",
         "deepresearch.md": "1cd1d43925102fb4e81c4a1db482a67ea449c125875124d54497bbde954d9a08"
@@ -50,14 +65,27 @@
       "pi-interactive-subagents": {
         "repo": "amosblomqvist/pi-interactive-subagents",
         "commit": "c3e8b53c0754ae5ccc19fdab5a7481ec039bc2f7",
-        "treeSha256": "4d3fde70d867ee1bf152eace7c9656e16e3daff8b1bef2ecb238e7268858b5ef"
+        "treeSha256": "7f76022a283a7ae04a68734886aa9000d3d97887b170f13d16b98b99fcbd30c8"
+      },
+      "pi-diff": {
+        "repo": "buddingnewinsights/pi-diff",
+        "commit": "8bf181c88445db71e9dbaa71de0e839e5e207c16",
+        "version": "0.8.1",
+        "treeSha256": "b9f4242e9cff2de6f075cf7bef99375af5a61a298f0697ed3093b974e8ed32f4",
+        "runtimeDependencies": {
+          "@earendil-works/pi-coding-agent": "0.85.1",
+          "@earendil-works/pi-tui": "0.85.1",
+          "@shikijs/cli": "4.0.2",
+          "diff": "8.0.3",
+          "xxhash-wasm": "1.1.0"
+        }
       }
     }
   },
   "bundled": {
-    "extensionsTreeSha256": "41de606b622be448f0b1a7b6a0e1d05ccbc391119fe2f1db4f27d56d587576f8",
-    "agentsTreeSha256": "a3a6eeebbb743bde82252950baaef5090eaf7fe7c62d5878e9efccab601b6bea2",
-    "npmCacheTreeSha256": "972353eb0de5e53e3f5b03df1c97c4dfc863284a33063f99cd3ccc3dcf1353dc"
+    "extensionsTreeSha256": "b1c6b3600cc5f14a0c2bb820da24c3c16b5ba197841f538a3bbcecc9b3ed7871",
+    "agentsTreeSha256": "a7dcaf4e310739c5070a0da509fa8fb3473fbbceac81211a9deca0b97801056b",
+    "npmCacheTreeSha256": "1a707c95ce42ca86dc856c4c14210d7eefc0f5082bfdd54a441a63d947e3ada3"
   },
   "toolAdaptations": {
     "feynmanFetch": {

@@ -21,3 +21,6 @@
 *.gz binary
 *.woff binary
 *.woff2 binary
+
+# npm cache content/index bytes are hashed as-is for offline bundle integrity.
+bundled/npm-cache/** -text

@@ -10,3 +10,12 @@ Run the `/autoresearch` workflow. The slash command expands the full workflow in
 Optional tools used when visible: `init_experiment`, `run_experiment`, `log_experiment`. Without those tools, run the benchmark through the available shell/tooling and record benchmark result, evidence, and decision in the session files.
 
 Session files: `autoresearch.md`, `autoresearch.sh`, `autoresearch.jsonl`
+
+## Research-agent handoff
+
+When bundled profiles are available, use `researcher` for evidence gathering,
+`verifier` for URL and claim checks, and `reviewer` for adversarial critique.
+Write final cited brief to `outputs/<slug>.md` and its provenance record to
+`outputs/<slug>.provenance.md`. Keep raw benchmark evidence and decisions in
+the three session files above; never replace missing evidence with invented
+results.

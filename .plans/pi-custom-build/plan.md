@@ -14,7 +14,7 @@ with **no core patch**. The user's locked decisions:
 2. **Web tools**: use **pi-config's Web Tools** (`web-fetch` + `web-search`).
    `pi-web-access` is **dropped**.
 3. **Fork base**: **latest** = pi **v0.85.1** (npm + git tag confirmed).
-4. **Scope**: frozen 12-extension inclusion list; see *Assumptions and answers
+4. **Scope**: frozen 13-extension inclusion list; see *Assumptions and answers
    from code*.
 5. **Artifact**: a **new GitHub repo** created in the `PiCode` workspace,
    **forked from `earendil-works/pi`**, using `../gh_token.txt` for auth.
@@ -95,6 +95,10 @@ for pi process isolation.
   `amosblomqvist/pi-interactive-subagents` @ `c3e8b53c0754ae5ccc19fdab5a7481ec039bc2f7`
   (tmux-based), including lockfile and SHA-256 tree digest. Source: `npm view`
   404 + repo | code.
+- **`pi-diff` source**: vendor `buddingnewinsights/pi-diff` @
+  `8bf181c88445db71e9dbaa71de0e839e5e207c16`, build `dist/`, and pin runtime
+  dependencies to pi v0.85.1-compatible versions. Source: upstream repository
+  and package lock | code.
 - **feynman sources**: `skills/autoresearch/SKILL.md`, `skills/deep-research/
   SKILL.md`, `prompts/autoresearch.md`, `prompts/deepresearch.md` from
   `~/.local/share/feynman/feynman-0.3.46-linux-x64/app/`. Source: local feynman
@@ -102,6 +106,10 @@ for pi process isolation.
 - **hawk-skills-md sources**: 17 skills + 7 agents at
   `/media/smk/.../Code/hawk-skills-md/` @ `0b1de1405c52755f01c1f7ffa67a9a8a63a1b7ab`.
   Source: local checkout | code.
+- **feynman agents**: `researcher`, `verifier`, and `reviewer` adapted from the
+  local Feynman agent profile. Their tool frontmatter maps `fetch_content` to
+  pi's `web_fetch` and omits unavailable Feynman/Hugging Face tools; no Feynman
+  runtime is bundled.
 - **`guardrail.ts` source**: `~/.pi/agent/extensions/guardrail.ts` (44873 B,
   pure extension-API consumer). Source: local pi config | code.
 - **`web_search` tool collision**: user's `~/.pi/agent/settings.json` packages
@@ -114,12 +122,15 @@ for pi process isolation.
 - **Decision: hawk skills reference Claude Code `Agent(subagent_type="audit-*")`
   subagents that pi has no equivalent for; ship as-is with dead refs.**
   Source: hawk skill bodies | default (accepted).
-- **Frozen inclusion list (12 extensions):** `guardrail`, `ask-user-question`,
+- **Frozen inclusion list (13 extensions):** `guardrail`, `ask-user-question`,
   `custom-header`, `prompt-snippets`, `bash-guard`, `browser`, `web-fetch`,
   `web-search`, `pi-undo-redo`, `pi-dictate`, `pi-observational-memory`, and
-  `pi-interactive-subagents`. Pi-config's four extra skills
+  `pi-interactive-subagents`, and `pi-diff`. Pi-config's four extra skills
   (`analyze-sessions`, `pdf-reader`, `web-debug`, `youtube-transcript`) are out
   of scope. Source: review resolution.
+- **Agent inclusion list (10):** seven hawk agents plus Feynman's
+  `researcher`, `verifier`, and `reviewer`. Autoresearch runtime artifacts are
+  user-session files, not pre-created bundle state.
 
 ## Risks accepted
 
@@ -151,6 +162,9 @@ for pi process isolation.
 - Inc 4 — Build standalone binary, install side-by-side (M) — **done** — depends on: 1 — unblocks: 5
 - Inc 5 — E2E verification (M) — **done** — depends on: 3, 4 — unblocks: 6
 - Inc 6 — Repo README (S) — **done** — depends on: 5 — unblocks: none
+- Inc 7 — Add pi-diff as default bundled extension (M) — **done** — depends on: 2, 3, 5 — unblocks: 8
+- Inc 8 — Add Feynman autoresearch agents/output contract (S) — **done** — depends on: 2, 5, 7 — unblocks: 9
+- Inc 9 — Whole-repo code review (M) — **done** — depends on: 8 — unblocks: none
 
 ## Increments
 
@@ -403,6 +417,71 @@ requirements.
 - Tests to add/update: none.
 - Done: README present, accurate, no secrets.
 
+### Inc 7 — Add pi-diff as default bundled extension (M)
+**Depends on:** 2, 3, 5
+**Unblocks:** 8
+**Status:** done
+**Done criteria:** pi-diff source is pinned and vendored, built entrypoint is
+installed by preinstall, offline production dependencies resolve from committed
+cache, structural E2E discovers `dist/index.js`, and README lists pi-diff as
+default.
+
+#### Files to touch
+- `bundled/extensions/pi-diff/`: vendored upstream source at pinned commit,
+  generated `dist/`, package lock, and pi manifest.
+- `bundle-manifest.json`: source commit/tree digest, package version, exact
+  runtime dependency versions, and refreshed bundle digests.
+- `scripts/preinstall-bundle.sh`: install pi-diff production dependencies from
+  committed offline cache.
+- `scripts/e2e-check.sh`: assert pi-diff entrypoint discovery.
+- `README.md`: document default pi-diff behavior and configuration pointer.
+
+#### Verification
+- Run `PI_CODING_AGENT_DIR=$(mktemp -d) bash scripts/preinstall-bundle.sh`.
+- Run `bash scripts/e2e-check.sh` and `npm run check`.
+
+### Inc 8 — Add Feynman autoresearch agents/output contract (S)
+**Depends on:** 2, 5, 7
+**Unblocks:** 9
+**Status:** done
+**Done criteria:** global agent install includes `researcher`, `verifier`, and
+`reviewer`; E2E asserts all ten bundled agent profiles; README and autoresearch
+skill document cited `outputs/` plus `.provenance.md` sidecar and the three
+session files.
+
+#### Files to touch
+- `bundled/agents/{researcher,verifier,reviewer}.md`: adapted local Feynman
+  profiles with pi's visible web tool names and `outputs/` artifact paths.
+- `bundled/skills/autoresearch/SKILL.md`: document agent handoff, cited output,
+  provenance sidecar, and session files.
+- `scripts/e2e-check.sh`: assert all ten agent files after installation.
+- `README.md`: document agent roles and autoresearch output/session contract.
+- `.gitignore`: retain pi-diff generated `dist/` artifacts in the bundle.
+- `bundle-manifest.json`: record source/adapted agent hashes and refresh bundle
+  tree hashes; installer validates bundle digests before staging.
+
+#### Verification
+- Run `PI_CODING_AGENT_DIR=$(mktemp -d) bash scripts/preinstall-bundle.sh`.
+- Run `bash scripts/e2e-check.sh`, `npm run check`, and `git diff --check`.
+
+### Inc 9 — Whole-repo code review (M)
+**Depends on:** 8
+**Status:** done
+**Review result:** deterministic logic/security/simplification/architecture scan
+plus manual vendor and installer review completed. Fixed release-blocking ignored
+`dist/` artifacts, unavailable Feynman tool names, missing bundle-digest
+enforcement, and production `diff` DoS advisory. Remaining note: structural E2E
+proves pi-diff discovery/load only; real write/edit rendering still belongs to
+an opt-in interactive lane.
+
+#### Verification
+- `npm run check` passed.
+- `bash scripts/e2e-check.sh` passed: 13 extensions, 19 bundled skills, 10
+  agents, 2 prompts; global skill discovery reported separately.
+- `bundled/extensions/pi-diff`: 154 tests passed; `npm audit --omit=dev` found
+  0 vulnerabilities.
+- `git diff --check` passed.
+
 ## Cross-cutting verification
 
 - After Inc 3 + Inc 4: run structural `scripts/e2e-check.sh` using
@@ -430,7 +509,7 @@ requirements.
 
 ## Resolved scope
 
-- Exact extension inclusion list is frozen at 12 in *Assumptions and answers
+- Exact extension inclusion list is frozen at 13 in *Assumptions and answers
   from code*.
 - Binary remains side-by-side as `~/.local/bin/pi-custom`; never replace
   `~/.local/bin/pi`.

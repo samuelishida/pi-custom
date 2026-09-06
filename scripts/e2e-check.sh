@@ -17,19 +17,25 @@ if rg -n -i 'failed to load extension|extension load error|uncaught exception' "
 fi
 
 ROOT_DIR="$ROOT_DIR" node --input-type=module - <<'NODE'
+import { existsSync } from "node:fs";
 const { DefaultResourceLoader, getAgentDir } = await import(`${process.env.ROOT_DIR}/packages/coding-agent/dist/index.js`);
 
 const expectedExtensions = [
 	"ask-user-question.ts", "bash-guard/index.ts", "browser/index.ts", "custom-header.ts",
 	"guardrail.ts", "pi-dictate/src/index.ts", "pi-interactive-subagents/pi-extension/subagents/index.ts",
 	"pi-observational-memory/src/index.ts", "pi-undo-redo/src/extension.ts", "prompt-snippets/index.ts",
-	"web-fetch/index.ts", "web-search/index.ts",
+	"pi-diff/dist/index.js", "web-fetch/index.ts", "web-search/index.ts",
 ];
 const expectedSkills = [
 	"autoresearch", "cap", "code-audit", "code-audit-hardcore", "coding-process", "compound",
 	"deep-research", "design-master", "fix-bug", "implement-plan", "implement-plan-audited",
 	"init-phoenix", "learn-system", "plan-large", "plan-small", "refactor", "remove-code",
 	"review-large-pr", "review-plan",
+];
+const expectedAgents = [
+	"audit-architecture", "audit-logic", "audit-research", "audit-security",
+	"audit-simplification", "audit-triage", "plan-reviewer", "researcher",
+	"verifier", "reviewer",
 ];
 const loader = new DefaultResourceLoader({ cwd: process.cwd(), agentDir: getAgentDir() });
 await loader.reload();
@@ -43,13 +49,18 @@ for (const name of ["web_search", "web_fetch"]) {
 	if (!toolNames.has(name)) throw new Error(`missing tool: ${name}`);
 }
 const skillNames = new Set(loader.getSkills().skills.map((skill) => skill.name));
-const missingSkills = expectedSkills.filter((name) => !skillNames.has(name));
+const agentDir = getAgentDir();
+const missingSkills = expectedSkills.filter((name) => !existsSync(`${agentDir}/skills/${name}/SKILL.md`));
 if (missingSkills.length) throw new Error(`missing skills: ${missingSkills.join(", ")}`);
+const missingAgents = expectedAgents.filter((name) => !existsSync(`${agentDir}/agents/${name}.md`));
+if (missingAgents.length) throw new Error(`missing agents: ${missingAgents.join(", ")}`);
 const promptNames = new Set(loader.getPrompts().prompts.map((prompt) => prompt.name));
 for (const name of ["autoresearch", "deepresearch"]) {
-	if (!promptNames.has(name)) throw new Error(`missing prompt: ${name}`);
+	if (!promptNames.has(name) || !existsSync(`${agentDir}/prompts/${name}.md`)) {
+		throw new Error(`missing prompt: ${name}`);
+	}
 }
-console.log(JSON.stringify({ extensions: extensionPaths.length, tools: [...toolNames].sort(), skills: skillNames.size, prompts: [...promptNames].sort() }));
+console.log(JSON.stringify({ extensions: extensionPaths.length, tools: [...toolNames].sort(), skills: expectedSkills.length, discoveredSkills: skillNames.size, agents: expectedAgents.length, prompts: [...promptNames].sort() }));
 NODE
 
 echo "structural E2E passed"

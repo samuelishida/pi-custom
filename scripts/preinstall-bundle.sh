@@ -25,6 +25,24 @@ fi
 node -e 'JSON.parse(require("fs").readFileSync(process.argv[1], "utf8"))' "$MANIFEST"
 
 sha256_file() { sha256sum "$1" | awk '{print $1}'; }
+content_sha256() {
+	local path=$1 attr
+	attr=$(git check-attr text -- "$path" 2>/dev/null | awk -F': ' '{print $3}')
+	if [[ "$attr" == set || "$attr" == auto ]]; then
+		sed 's/\r$//' "$path" | sha256sum | awk '{print $1}'
+	else
+		sha256_file "$path"
+	fi
+}
+tree_sha256() {
+	local rel_root=$1
+	find "$ROOT_DIR/$rel_root" -type f \
+		-not -path '*/node_modules/*' \
+		-not -path '*/_logs/*' \
+		-print | sed "s#^$ROOT_DIR/##" | sort | while IFS= read -r rel; do
+		printf '%s  %s\n' "$(content_sha256 "$ROOT_DIR/$rel")" "$rel"
+	done | sha256sum | awk '{print $1}'
+}
 manifest_value() {
 	node - "$MANIFEST" "$1" <<'NODE'
 const fs = require("fs");
@@ -53,6 +71,17 @@ for item in \
 	IFS='|' read -r name archive manifest_path <<< "$item"
 	[[ "$(sha256_file "$ROOT_DIR/$archive")" == "$(manifest_value "$manifest_path")" ]] || {
 		echo "$name tarball SHA-256 mismatch" >&2; exit 1;
+	}
+done
+
+for item in \
+	"bundled/extensions|bundled.extensionsTreeSha256" \
+	"bundled/agents|bundled.agentsTreeSha256" \
+	"bundled/npm-cache|bundled.npmCacheTreeSha256" \
+	"bundled/extensions/pi-diff|sources.git.pi-diff.treeSha256"; do
+	IFS='|' read -r rel_root manifest_path <<< "$item"
+	[[ "$(tree_sha256 "$rel_root")" == "$(manifest_value "$manifest_path")" ]] || {
+		echo "$rel_root tree SHA-256 mismatch" >&2; exit 1;
 	}
 done
 
@@ -107,7 +136,7 @@ done
 for src in "$ROOT_DIR"/bundled/agents/*.md; do cp -a "$src" "$stage_dir/agents-$(basename "$src")"; done
 for src in "$ROOT_DIR"/bundled/prompts/*.md; do cp -a "$src" "$stage_dir/prompts-$(basename "$src")"; done
 
-for name in bash-guard browser web-fetch pi-undo-redo pi-dictate pi-observational-memory pi-interactive-subagents; do
+for name in bash-guard browser web-fetch pi-undo-redo pi-dictate pi-observational-memory pi-interactive-subagents pi-diff; do
 	if [[ -f "$stage_dir/$name/package-lock.json" ]]; then
 		(cd "$stage_dir/$name" && npm ci --omit=dev --ignore-scripts --offline --cache "$ROOT_DIR/bundled/npm-cache" > "$ROOT_DIR/.preinstall-$name.log" 2>&1) || {
 			echo "offline dependency install failed: $name (see .preinstall-$name.log)" >&2
