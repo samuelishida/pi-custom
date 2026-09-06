@@ -17,7 +17,7 @@ if rg -n -i 'failed to load extension|extension load error|uncaught exception' "
 fi
 
 ROOT_DIR="$ROOT_DIR" node --input-type=module - <<'NODE'
-import { existsSync } from "node:fs";
+import { existsSync, lstatSync, readFileSync } from "node:fs";
 const { DefaultResourceLoader, getAgentDir } = await import(`${process.env.ROOT_DIR}/packages/coding-agent/dist/index.js`);
 
 const expectedExtensions = [
@@ -39,6 +39,11 @@ const expectedAgents = [
 ];
 const loader = new DefaultResourceLoader({ cwd: process.cwd(), agentDir: getAgentDir() });
 await loader.reload();
+function requireResourceFile(path, label) {
+	if (!existsSync(path) || !lstatSync(path).isFile()) throw new Error(`missing or non-regular ${label}: ${path}`);
+	const content = readFileSync(path, "utf8");
+	if (!content.startsWith("---\n") || !content.includes("\n---")) throw new Error(`invalid frontmatter: ${label}`);
+}
 const loaded = loader.getExtensions();
 if (loaded.errors.length > 0) throw new Error(`extension errors: ${JSON.stringify(loaded.errors)}`);
 const extensionPaths = loaded.extensions.map((extension) => extension.path);
@@ -50,15 +55,14 @@ for (const name of ["web_search", "web_fetch"]) {
 }
 const skillNames = new Set(loader.getSkills().skills.map((skill) => skill.name));
 const agentDir = getAgentDir();
-const missingSkills = expectedSkills.filter((name) => !existsSync(`${agentDir}/skills/${name}/SKILL.md`));
-if (missingSkills.length) throw new Error(`missing skills: ${missingSkills.join(", ")}`);
-const missingAgents = expectedAgents.filter((name) => !existsSync(`${agentDir}/agents/${name}.md`));
-if (missingAgents.length) throw new Error(`missing agents: ${missingAgents.join(", ")}`);
+for (const name of expectedSkills) requireResourceFile(`${agentDir}/skills/${name}/SKILL.md`, `skill ${name}`);
+for (const name of expectedAgents) requireResourceFile(`${agentDir}/agents/${name}.md`, `agent ${name}`);
 const promptNames = new Set(loader.getPrompts().prompts.map((prompt) => prompt.name));
 for (const name of ["autoresearch", "deepresearch"]) {
-	if (!promptNames.has(name) || !existsSync(`${agentDir}/prompts/${name}.md`)) {
+	if (!promptNames.has(name)) {
 		throw new Error(`missing prompt: ${name}`);
 	}
+	requireResourceFile(`${agentDir}/prompts/${name}.md`, `prompt ${name}`);
 }
 console.log(JSON.stringify({ extensions: extensionPaths.length, tools: [...toolNames].sort(), skills: expectedSkills.length, discoveredSkills: skillNames.size, agents: expectedAgents.length, prompts: [...promptNames].sort() }));
 NODE

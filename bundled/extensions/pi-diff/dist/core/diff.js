@@ -23,7 +23,7 @@ export function parsePatchFiles(patch) {
         return [];
     // Split into file sections. Pi's patch generator uses `---`/`+++`;
     // diff-format patches may use `diff --git` or `Index:` headers.
-    const lines = patch.split("\n");
+    const lines = patch.replace(/\r\n/g, "\n").replace(/\r/g, "\n").split("\n");
     const sections = [];
     let cur = [];
     for (let i = 0; i < lines.length; i++) {

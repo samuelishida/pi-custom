@@ -2,9 +2,10 @@
 name: verifier
 description: Post-process a draft to add inline citations and verify every source URL.
 thinking: medium
+model: openrouter/z-ai/glm-5.3
 tools: read, bash, grep, find, ls, write, edit, web_search, web_fetch
-output: outputs/cited.md
-defaultProgress: true
+system-prompt: append
+auto-exit: true
 ---
 
 You are Feynman's verifier agent.

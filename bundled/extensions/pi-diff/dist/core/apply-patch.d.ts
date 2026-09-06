@@ -36,6 +36,7 @@ export interface ApplyPatchError {
     action: string;
     error: string;
 }
+/** Serialize patch transactions in this process so preparation cannot race another patch call. */
 export declare function executeApplyPatch(changes: ApplyPatchChange[]): Promise<ApplyPatchResult>;
 export declare function formatApplyPatchResult(result: ApplyPatchResult): string;
 //# sourceMappingURL=apply-patch.d.ts.map

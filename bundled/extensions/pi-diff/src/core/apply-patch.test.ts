@@ -83,6 +83,14 @@ describe("executeApplyPatch source-safe updates", () => {
 		expect(readFileSync(destinationPath, "utf8")).toBe("destination\n");
 	});
 
+	it("writes add content exactly as supplied", async () => {
+		const addedPath = join(tempDir, "nested", "new.txt");
+		const result = await executeApplyPatch([{ path: addedPath, action: "add", content: "exact" }]);
+
+		expect(result.ok).toBe(true);
+		expect(readFileSync(addedPath, "utf8")).toBe("exact");
+	});
+
 	it("preserves CRLF when applying an indentation-adjusted single-line update", async () => {
 		writeFileSync(filePath, "function f() {\r\n    first();\r\n}\r\n");
 

@@ -29,7 +29,19 @@ import type { Component } from "@earendil-works/pi-tui";
 import { codeToANSI } from "@shikijs/cli";
 import * as Diff from "diff";
 import { type ApplyPatchChange, executeApplyPatch, formatApplyPatchResult } from "./core/apply-patch.js";
-import { configIndicatorStyle, loadPiDiffConfig, type PiDiffToolName } from "./core/config.js";
+import {
+	configFileHeader,
+	configIndicatorStyle,
+	configLineNumbers,
+	configLongLines,
+	configMaxPreviewLines,
+	configMaxRenderLines,
+	configSplitMinCodeWidth,
+	configSplitMinWidth,
+	configWordDiffMinSimilarity,
+	loadPiDiffConfig,
+	type PiDiffToolName,
+} from "./core/config.js";
 import {
 	computeHunkBlocks,
 	type DiffLine,
@@ -112,6 +124,7 @@ interface DiffPreset {
 interface DiffUserConfig {
 	diffTheme?: string;
 	diffColors?: Record<string, string>;
+	shikiTheme?: string;
 }
 
 const DIFF_PRESETS: Record<string, DiffPreset> = {
@@ -301,20 +314,30 @@ function autoDeriveBgFromTheme(theme: PiTheme): void {
 
 /** Load diff theme config from .pi/settings.json (project-level, then global). */
 function loadDiffConfig(): DiffUserConfig {
+	const piConfig = loadPiDiffConfig();
 	const paths = [`${process.cwd()}/.pi/settings.json`, `${process.env.HOME ?? ""}/.pi/settings.json`];
+	let merged: DiffUserConfig = {
+		diffTheme: piConfig.theme,
+		diffColors: piConfig.colors,
+		shikiTheme: piConfig.shikiTheme,
+	};
 	for (const p of paths) {
 		try {
 			if (existsSync(p)) {
 				const raw = JSON.parse(readFileSync(p, "utf-8"));
 				if (raw.diffTheme || raw.diffColors) {
-					return { diffTheme: raw.diffTheme, diffColors: raw.diffColors };
+					merged = {
+						...merged,
+						diffTheme: raw.diffTheme ?? merged.diffTheme,
+						diffColors: { ...(merged.diffColors ?? {}), ...(raw.diffColors ?? {}) },
+					};
 				}
 			}
 		} catch {
 			// skip invalid files
 		}
 	}
-	return {};
+	return merged;
 }
 
 /** Apply diff palette from settings → preset → (auto-derive deferred) → defaults.
@@ -396,7 +419,7 @@ function applyDiffPalette(): void {
 	});
 
 	// --- Shiki syntax theme ---
-	const shiki = ov.shikiTheme ?? preset?.shikiTheme;
+	const shiki = ov.shikiTheme ?? config.shikiTheme ?? preset?.shikiTheme;
 	if (shiki) THEME = shiki as BundledTheme;
 
 	// --- Rebuild derived constants ---
@@ -439,8 +462,8 @@ function envBg(name: string, fallback: string): string {
 // --- Split-view thresholds ---
 // Split is preferred when there's real room. At narrow widths, a clean stacked
 // (unified) view is better than a cramped split with wrapping.
-const SPLIT_MIN_WIDTH = envInt("DIFF_SPLIT_MIN_WIDTH", 80); // allow split in normal terminals
-const SPLIT_MIN_CODE_WIDTH = envInt("DIFF_SPLIT_MIN_CODE_WIDTH", 24); // short balanced hunks can split
+const SPLIT_MIN_WIDTH = envInt("DIFF_SPLIT_MIN_WIDTH", configSplitMinWidth() ?? 80); // allow split in normal terminals
+const SPLIT_MIN_CODE_WIDTH = envInt("DIFF_SPLIT_MIN_CODE_WIDTH", configSplitMinCodeWidth() ?? 24); // short balanced hunks can split
 const SPLIT_MAX_WRAP_RATIO = 0.35; // wrap-heavy hunks fall back to unified
 const SPLIT_MAX_WRAP_LINES = 10; // absolute cap before unified fallback
 
@@ -449,13 +472,17 @@ const MAX_TERM_WIDTH = 210; // max for 1728px wide display (~205 cols at typical
 const DEFAULT_TERM_WIDTH = 200; // safe default for 1728x1117 resolution
 
 // --- Rendering limits ---
-const MAX_PREVIEW_LINES = 60; // was 50 — show slightly more context in edit preview
-const MAX_RENDER_LINES = 150; // was 120 — show more of the diff in write tool
+const MAX_PREVIEW_LINES = configMaxPreviewLines() ?? 60; // was 50 — show slightly more context in edit preview
+const MAX_RENDER_LINES = configMaxRenderLines() ?? 150; // was 120 — show more of the diff in write tool
 const MAX_HL_CHARS = 80_000; // was 50k — allow syntax hl for larger diffs
 const CACHE_LIMIT = 192; // was 128 — bigger cache for multi-file sessions
 
 // --- Word diff ---
-const WORD_DIFF_MIN_SIM = 0.15; // was 0.2 — show word diffs for slightly less similar lines
+const WORD_DIFF_MIN_SIM = configWordDiffMinSimilarity() ?? 0.15; // was 0.2 — show word diffs for slightly less similar lines
+
+const SHOW_LINE_NUMBERS = configLineNumbers() ?? true;
+const SHOW_FILE_HEADER = configFileHeader() ?? true;
+const LONG_LINES: "wrap" | "scroll" = configLongLines() ?? "wrap";
 
 // --- Wrapping ---
 // Adaptive: narrow terminals truncate aggressively, wide terminals allow wrapping.
@@ -695,6 +722,7 @@ function normalizeShikiContrast(ansi: string): string {
 
 /** Wrap ANSI-encoded string into rows of `w` visible chars. Max `maxRows` rows; last row truncates with ›. */
 function wrapAnsi(s: string, w: number, maxRows = adaptiveWrapRows(), fillBg = ""): string[] {
+	if (LONG_LINES === "scroll") maxRows = 1;
 	if (w <= 0) return [""];
 	const plain = strip(s);
 	if (plain.length <= w) {
@@ -771,6 +799,7 @@ function wrapAnsi(s: string, w: number, maxRows = adaptiveWrapRows(), fillBg = "
 }
 
 function lnum(n: number | null, w: number, fg = FG_LNUM): string {
+	if (!SHOW_LINE_NUMBERS) return " ".repeat(w);
 	if (n === null) return " ".repeat(w);
 	const v = String(n);
 	return `${fg}${" ".repeat(Math.max(0, w - v.length))}${v}${RST}`;
@@ -1454,7 +1483,7 @@ export default async function diffRendererExtension(pi: ExtensionAPI): Promise<v
 		const content =
 			meta !== undefined && meta !== null
 				? `${leftPad}${meta}${suffix}`
-				: `${leftPad}${theme.fg("toolTitle", theme.bold(formatToolHeaderName(label ?? "")))} ${formatToolHeaderPath(theme, sp(filePath ?? ""))}${suffix}`;
+				: `${leftPad}${theme.fg("toolTitle", theme.bold(formatToolHeaderName(label ?? "")))}${SHOW_FILE_HEADER && filePath ? ` ${formatToolHeaderPath(theme, sp(filePath))}` : ""}${suffix}`;
 		return `${"\n".repeat(topPad)}${content}${"\n".repeat(bottomPad)}`;
 	}
 

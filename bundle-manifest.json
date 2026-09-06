@@ -31,16 +31,16 @@
         "reviewer.md": "4caa4527b66744bed6d5d2e2865301b910cba1df48743ef27f8950f7860665e0"
       },
       "adaptedAgents": {
-        "researcher.md": "e336b374816141982212c15abda906fe2858a2def23b1b16c7eecba80838aa99",
-        "verifier.md": "124bf33518d781914cfc1b4beb5cbf3da3f928345b38ce4bbb84b3f9100948f2",
-        "reviewer.md": "504fe3a96da2dc2aafa429d9ef4fe61ffc64cedb7dbedab662d4433ed604e96c"
+        "researcher.md": "0448ce35cb525a27f872a2b02cb82fae743ec1512c8e6433ffe7f5035e52107b",
+        "verifier.md": "e46dd390f4c7e75ee395a9ee6cfd2666e07562318d601e1026eac82c4c5b130b",
+        "reviewer.md": "6e2bc1a0dd5c9903704a5962dcd1186e8d4eff2fde9aaa0567337916d3f3eef6"
       },
       "agentAdaptations": {
         "fetch_content": "web_fetch",
         "unavailableTools": ["get_search_content", "hf_dataset_info", "hf_repo_files", "hf_repo_read_file"]
       },
       "adaptedPrompts": {
-        "autoresearch.md": "5138460d5e44531b0b9e39560d5352d1247d072ee7ed5e88700dc617ae2fecd5",
+        "autoresearch.md": "202811110206f58e3dbda2d8a6d900e7acff30ec979ac8ffec31827ae74a83e9",
         "deepresearch.md": "1cd1d43925102fb4e81c4a1db482a67ea449c125875124d54497bbde954d9a08"
       }
     },
@@ -71,7 +71,7 @@
         "repo": "buddingnewinsights/pi-diff",
         "commit": "8bf181c88445db71e9dbaa71de0e839e5e207c16",
         "version": "0.8.1",
-        "treeSha256": "b9f4242e9cff2de6f075cf7bef99375af5a61a298f0697ed3093b974e8ed32f4",
+        "treeSha256": "97fda99308ce6c0fe34207d00733891c0b12d78f6019a4b9afd0fb986fab26ba",
         "runtimeDependencies": {
           "@earendil-works/pi-coding-agent": "0.85.1",
           "@earendil-works/pi-tui": "0.85.1",
@@ -83,8 +83,8 @@
     }
   },
   "bundled": {
-    "extensionsTreeSha256": "b1c6b3600cc5f14a0c2bb820da24c3c16b5ba197841f538a3bbcecc9b3ed7871",
-    "agentsTreeSha256": "a7dcaf4e310739c5070a0da509fa8fb3473fbbceac81211a9deca0b97801056b",
+    "extensionsTreeSha256": "4bc7c87254f0320f3b72cf47f9af04f807c4cb3f2ad7466bb0755a3fe5a02099",
+    "agentsTreeSha256": "7ee1af58b8b8974f29a9bbbcfa589a14c1dd712ccbab607eca4b6e566545678e",
     "npmCacheTreeSha256": "1a707c95ce42ca86dc856c4c14210d7eefc0f5082bfdd54a441a63d947e3ada3"
   },
   "toolAdaptations": {

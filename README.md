@@ -12,6 +12,9 @@ prompt templates. Pi core remains unmodified.
   `deep-research` skills.
 - Ten agent markdown files: seven hawk audit/planning agents plus Feynman's
   `researcher`, `verifier`, and `reviewer` profiles.
+- The Feynman `researcher` profile intentionally overrides the generic
+  researcher bundled inside `pi-interactive-subagents`; all callers keep the
+  stable `researcher` name while using this bundle's evidence contract.
 - `/autoresearch` and `/deepresearch` prompt templates.
 - pi-config Web Tools: `web_search` and `web_fetch`.
 

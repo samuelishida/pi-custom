@@ -21,6 +21,16 @@ export interface PiDiffJson {
     theme?: string;
     /** Shiki syntax theme name. */
     shikiTheme?: string;
+    /** Minimum terminal width for split view. */
+    splitMinWidth?: number;
+    /** Minimum code-column width for split view. */
+    splitMinCodeWidth?: number;
+    /** Maximum lines shown in edit previews. */
+    maxPreviewLines?: number;
+    /** Maximum lines shown in write previews. */
+    maxRenderLines?: number;
+    /** Minimum similarity for word-level diff highlighting. */
+    wordDiffMinSimilarity?: number;
     /** Per-color hex overrides. */
     colors?: Partial<{
         bgAdd: string;
@@ -56,4 +66,9 @@ export declare function configFileHeader(cwd?: string): boolean | undefined;
 export declare function configTheme(cwd?: string): string | undefined;
 export declare function configShikiTheme(cwd?: string): string | undefined;
 export declare function configColors(cwd?: string): PiDiffJson["colors"];
+export declare function configSplitMinWidth(cwd?: string): number | undefined;
+export declare function configSplitMinCodeWidth(cwd?: string): number | undefined;
+export declare function configMaxPreviewLines(cwd?: string): number | undefined;
+export declare function configMaxRenderLines(cwd?: string): number | undefined;
+export declare function configWordDiffMinSimilarity(cwd?: string): number | undefined;
 //# sourceMappingURL=config.d.ts.map

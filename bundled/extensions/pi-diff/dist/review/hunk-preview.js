@@ -2,7 +2,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { extname } from "node:path";
 import { codeToANSI } from "@shikijs/cli";
 import * as Diff from "diff";
-import { configIndicatorStyle } from "../core/config.js";
+import { configIndicatorStyle, configLineNumbers, configLongLines, configSplitMinCodeWidth, configSplitMinWidth, configWordDiffMinSimilarity, loadPiDiffConfig, } from "../core/config.js";
 import { getSepStyle, sepLabelSplit, sepLabelUnified } from "../core/diff.js";
 const DIFF_PRESETS = {
     default: {
@@ -70,13 +70,15 @@ const DIFF_PRESETS = {
         fgSafeMuted: "#9da5ae",
     },
 };
-const SPLIT_MIN_WIDTH = envInt("DIFF_SPLIT_MIN_WIDTH", 80);
-const SPLIT_MIN_CODE_WIDTH = envInt("DIFF_SPLIT_MIN_CODE_WIDTH", 24);
+const SPLIT_MIN_WIDTH = envInt("DIFF_SPLIT_MIN_WIDTH", configSplitMinWidth() ?? 80);
+const SPLIT_MIN_CODE_WIDTH = envInt("DIFF_SPLIT_MIN_CODE_WIDTH", configSplitMinCodeWidth() ?? 24);
 const SPLIT_MAX_WRAP_RATIO = 0.35;
 const SPLIT_MAX_WRAP_LINES = 10;
 const MAX_HL_CHARS = 80_000;
 const CACHE_LIMIT = 192;
-const WORD_DIFF_MIN_SIM = 0.15;
+const WORD_DIFF_MIN_SIM = configWordDiffMinSimilarity() ?? 0.15;
+const SHOW_LINE_NUMBERS = configLineNumbers() ?? true;
+const LONG_LINES = configLongLines() ?? "wrap";
 const MAX_WRAP_ROWS_WIDE = 3;
 const MAX_WRAP_ROWS_MED = 2;
 const MAX_WRAP_ROWS_NARROW = 1;
@@ -284,19 +286,29 @@ function autoDeriveBgFromTheme(theme) {
     catch { }
 }
 function loadDiffConfig() {
+    const piConfig = loadPiDiffConfig();
     const paths = [`${process.cwd()}/.pi/settings.json`, `${process.env.HOME ?? ""}/.pi/settings.json`];
+    let merged = {
+        diffTheme: piConfig.theme,
+        diffColors: piConfig.colors,
+        shikiTheme: piConfig.shikiTheme,
+    };
     for (const path of paths) {
         try {
             if (existsSync(path)) {
                 const raw = JSON.parse(readFileSync(path, "utf-8"));
                 if (raw.diffTheme || raw.diffColors) {
-                    return { diffTheme: raw.diffTheme, diffColors: raw.diffColors };
+                    merged = {
+                        ...merged,
+                        diffTheme: raw.diffTheme ?? merged.diffTheme,
+                        diffColors: { ...(merged.diffColors ?? {}), ...(raw.diffColors ?? {}) },
+                    };
                 }
             }
         }
         catch { }
     }
-    return {};
+    return merged;
 }
 export function applyDiffPalette() {
     const config = loadDiffConfig();
@@ -368,7 +380,7 @@ export function applyDiffPalette() {
     applyFg(null, "fgSafeMuted", preset?.fgSafeMuted, (value) => {
         FG_SAFE_MUTED = value;
     });
-    const shikiTheme = overrides.shikiTheme ?? preset?.shikiTheme;
+    const shikiTheme = overrides.shikiTheme ?? config.shikiTheme ?? preset?.shikiTheme;
     if (shikiTheme)
         THEME = shikiTheme;
     DIVIDER = `${FG_RULE}${RST}`;
@@ -519,6 +531,8 @@ function normalizeShikiContrast(ansi) {
     return ansi.replace(ANSI_PARAM_CAPTURE_RE, (sequence, params) => isLowContrastShikiFg(params) ? FG_SAFE_MUTED : sequence);
 }
 function wrapAnsi(content, width, maxRows, fillBg = "") {
+    if (LONG_LINES === "scroll")
+        maxRows = 1;
     if (width <= 0)
         return [""];
     const plain = strip(content);
@@ -585,6 +599,8 @@ function wrapAnsi(content, width, maxRows, fillBg = "") {
     return rows;
 }
 function lnum(value, width, fg = FG_LNUM) {
+    if (!SHOW_LINE_NUMBERS)
+        return " ".repeat(width);
     if (value === null)
         return " ".repeat(width);
     const text = String(value);

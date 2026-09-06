@@ -64,6 +64,22 @@ Initialize the session: create `autoresearch.md`, `autoresearch.jsonl`, `autores
 Each iteration: edit -> run the benchmark -> log the benchmark result, evidence, and decision -> compare against the baseline -> keep the change, revert it, or record the failed hypothesis -> repeat. Do not stop unless interrupted or `maxIterations` is reached.
 After the baseline and after meaningful iteration milestones, append a concise entry to `CHANGELOG.md` summarizing what changed, what metric result was observed, what failed, and the next step.
 
+## Step 5: Evidence handoff
+
+After the loop reaches its stop condition, derive a short lowercase hyphenated
+slug from the optimization target. If the `subagent` tool is visible, run the
+bundled `researcher` agent first to gather sources and benchmark context, then
+run `verifier` against the draft, and finally run `reviewer` against the cited
+artifact. Pass each agent a unique output path under `outputs/`; do not rely on
+agent frontmatter to choose paths. If any agent or web capability is missing,
+record `Verification: BLOCKED` and the exact missing capability instead of
+claiming verification.
+
+Write the final cited brief to `outputs/<slug>.md` and matching provenance to
+`outputs/<slug>.provenance.md`. Include benchmark commands, raw evidence paths,
+iteration decisions, source URLs, and unresolved checks. Verify both files
+exist on disk before responding.
+
 ## Optional tools
 
 Use these only when they are visible in the current tool set:

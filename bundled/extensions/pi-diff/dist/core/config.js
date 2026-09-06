@@ -14,7 +14,7 @@
 // ---------------------------------------------------------------------------
 import { existsSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
@@ -22,14 +22,19 @@ export const PI_DIFF_TOOL_NAMES = ["write", "edit", "apply_patch"];
 // ---------------------------------------------------------------------------
 // Module state — singleton cache
 // ---------------------------------------------------------------------------
-let _cachedConfig; // null = not loaded, undefined = attempted/no-file
+const _cachedConfigs = new Map();
+function cacheKey(cwd) {
+    return cwd ? resolve(cwd) : "<default>";
+}
 /**
  * Load pi-diff.json from project or global paths.
  * Returns {} if neither file exists.
  */
 export function loadPiDiffConfig(cwd) {
-    if (_cachedConfig !== undefined)
-        return _cachedConfig ?? {};
+    const key = cacheKey(cwd);
+    const cached = _cachedConfigs.get(key);
+    if (cached)
+        return cached;
     // When a specific cwd is provided (e.g. for testing), only search that path.
     // When omitted, search project root then global.
     const searchPaths = cwd
@@ -69,14 +74,14 @@ export function loadPiDiffConfig(cwd) {
             // Skip invalid files silently
         }
     }
-    _cachedConfig = Object.keys(merged).length > 0 ? merged : null;
+    _cachedConfigs.set(key, merged);
     return merged;
 }
 /**
  * Invalidate the cached config (useful for testing).
  */
 export function invalidatePiDiffConfig() {
-    _cachedConfig = undefined;
+    _cachedConfigs.clear();
 }
 /**
  * Deep-merge two PiDiffJson objects. Later values win.
@@ -122,5 +127,20 @@ export function configShikiTheme(cwd) {
 }
 export function configColors(cwd) {
     return loadPiDiffConfig(cwd).colors;
+}
+export function configSplitMinWidth(cwd) {
+    return loadPiDiffConfig(cwd).splitMinWidth;
+}
+export function configSplitMinCodeWidth(cwd) {
+    return loadPiDiffConfig(cwd).splitMinCodeWidth;
+}
+export function configMaxPreviewLines(cwd) {
+    return loadPiDiffConfig(cwd).maxPreviewLines;
+}
+export function configMaxRenderLines(cwd) {
+    return loadPiDiffConfig(cwd).maxRenderLines;
+}
+export function configWordDiffMinSimilarity(cwd) {
+    return loadPiDiffConfig(cwd).wordDiffMinSimilarity;
 }
 //# sourceMappingURL=config.js.map

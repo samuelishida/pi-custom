@@ -15,7 +15,7 @@
 
 import { existsSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -45,6 +45,16 @@ export interface PiDiffJson {
 	theme?: string;
 	/** Shiki syntax theme name. */
 	shikiTheme?: string;
+	/** Minimum terminal width for split view. */
+	splitMinWidth?: number;
+	/** Minimum code-column width for split view. */
+	splitMinCodeWidth?: number;
+	/** Maximum lines shown in edit previews. */
+	maxPreviewLines?: number;
+	/** Maximum lines shown in write previews. */
+	maxRenderLines?: number;
+	/** Minimum similarity for word-level diff highlighting. */
+	wordDiffMinSimilarity?: number;
 	/** Per-color hex overrides. */
 	colors?: Partial<{
 		bgAdd: string;
@@ -65,17 +75,23 @@ export interface PiDiffJson {
 }
 
 // ---------------------------------------------------------------------------
-// Module state — singleton cache
+// Module state — cache isolated by working directory
 // ---------------------------------------------------------------------------
 
-let _cachedConfig: PiDiffJson | null | undefined; // null = not loaded, undefined = attempted/no-file
+const _cachedConfigs = new Map<string, PiDiffJson>();
+
+function cacheKey(cwd?: string): string {
+	return cwd ? resolve(cwd) : "<default>";
+}
 
 /**
  * Load pi-diff.json from project or global paths.
  * Returns {} if neither file exists.
  */
 export function loadPiDiffConfig(cwd?: string): PiDiffJson {
-	if (_cachedConfig !== undefined) return _cachedConfig ?? {};
+	const key = cacheKey(cwd);
+	const cached = _cachedConfigs.get(key);
+	if (cached) return cached;
 
 	// When a specific cwd is provided (e.g. for testing), only search that path.
 	// When omitted, search project root then global.
@@ -119,7 +135,7 @@ export function loadPiDiffConfig(cwd?: string): PiDiffJson {
 		}
 	}
 
-	_cachedConfig = Object.keys(merged).length > 0 ? merged : null;
+	_cachedConfigs.set(key, merged);
 	return merged;
 }
 
@@ -127,7 +143,7 @@ export function loadPiDiffConfig(cwd?: string): PiDiffJson {
  * Invalidate the cached config (useful for testing).
  */
 export function invalidatePiDiffConfig(): void {
-	_cachedConfig = undefined;
+	_cachedConfigs.clear();
 }
 
 /**
@@ -181,4 +197,24 @@ export function configShikiTheme(cwd?: string): string | undefined {
 
 export function configColors(cwd?: string): PiDiffJson["colors"] {
 	return loadPiDiffConfig(cwd).colors;
+}
+
+export function configSplitMinWidth(cwd?: string): number | undefined {
+	return loadPiDiffConfig(cwd).splitMinWidth;
+}
+
+export function configSplitMinCodeWidth(cwd?: string): number | undefined {
+	return loadPiDiffConfig(cwd).splitMinCodeWidth;
+}
+
+export function configMaxPreviewLines(cwd?: string): number | undefined {
+	return loadPiDiffConfig(cwd).maxPreviewLines;
+}
+
+export function configMaxRenderLines(cwd?: string): number | undefined {
+	return loadPiDiffConfig(cwd).maxRenderLines;
+}
+
+export function configWordDiffMinSimilarity(cwd?: string): number | undefined {
+	return loadPiDiffConfig(cwd).wordDiffMinSimilarity;
 }

@@ -6,15 +6,54 @@
  */
 import * as fs from "node:fs";
 import * as path from "node:path";
+import { randomUUID } from "node:crypto";
 import { replaceForPatch } from "./replace.js";
 // ---------------------------------------------------------------------------
 // Atomic file write
 // ---------------------------------------------------------------------------
 async function atomicWriteFile(filePath, content, mode) {
     const dir = path.dirname(filePath);
-    const tmp = path.join(dir, `.${path.basename(filePath)}.pi-apply-patch.${process.pid}.tmp`);
+    const tmp = path.join(dir, `.${path.basename(filePath)}.pi-apply-patch.${process.pid}.${randomUUID()}.tmp`);
     await fs.promises.writeFile(tmp, content, { encoding: "utf8", mode });
-    await fs.promises.rename(tmp, filePath);
+    try {
+        await fs.promises.rename(tmp, filePath);
+    }
+    catch (error) {
+        await fs.promises.rm(tmp, { force: true }).catch(() => { });
+        throw error;
+    }
+}
+async function removeCreatedDirectories(directories) {
+    for (const dir of directories) {
+        try {
+            await fs.promises.rmdir(dir);
+        }
+        catch {
+            // Keep directories that became non-empty or were removed by another actor.
+        }
+    }
+}
+async function prepareParentDirectory(dir) {
+    const missing = [];
+    let current = dir;
+    while (true) {
+        try {
+            const stats = await fs.promises.stat(current);
+            if (!stats.isDirectory())
+                throw new Error(`parent is not a directory: ${current}`);
+            break;
+        }
+        catch (error) {
+            if (error.code !== "ENOENT")
+                throw error;
+            missing.push(current);
+            const parent = path.dirname(current);
+            if (parent === current)
+                break;
+            current = parent;
+        }
+    }
+    return missing;
 }
 async function readRegularFile(filePath, label) {
     let stats;
@@ -43,16 +82,19 @@ async function prepareAdd(change) {
     if (await pathExists(change.path))
         throw new Error(`add target already exists: ${change.path}`);
     const content = change.content ?? "";
-    const final = content.endsWith("\n") ? content : `${content}\n`;
+    const final = content;
+    const createdDirs = [];
     return {
         change,
         applied: { path: change.path, action: "add", bytes: Buffer.byteLength(final, "utf8"), newContent: final },
         async commit() {
+            createdDirs.push(...(await prepareParentDirectory(path.dirname(change.path))));
             await fs.promises.mkdir(path.dirname(change.path), { recursive: true });
             await atomicWriteFile(change.path, final);
         },
         async rollback() {
-            await fs.promises.unlink(change.path);
+            await fs.promises.unlink(change.path).catch(() => { });
+            await removeCreatedDirectories(createdDirs);
         },
     };
 }
@@ -104,15 +146,18 @@ async function prepareMove(change) {
     await readRegularFile(change.path, "move source");
     if (await pathExists(movePath))
         throw new Error(`move destination already exists: ${movePath}`);
+    const createdDirs = [];
     return {
         change,
         applied: { path: change.path, action: "move", movePath },
         async commit() {
+            createdDirs.push(...(await prepareParentDirectory(path.dirname(movePath))));
             await fs.promises.mkdir(path.dirname(movePath), { recursive: true });
             await fs.promises.rename(change.path, movePath);
         },
         async rollback() {
-            await fs.promises.rename(movePath, change.path);
+            await fs.promises.rename(movePath, change.path).catch(() => { });
+            await removeCreatedDirectories(createdDirs);
         },
     };
 }
@@ -160,7 +205,7 @@ function generateDiff(_filePath, oldContent, newContent) {
 // ---------------------------------------------------------------------------
 // Main executor
 // ---------------------------------------------------------------------------
-export async function executeApplyPatch(changes) {
+async function executeApplyPatchUnlocked(changes) {
     const prepared = [];
     const errors = [];
     const claimedPaths = new Set();
@@ -217,6 +262,13 @@ export async function executeApplyPatch(changes) {
         return { ok: false, applied: [], errors };
     }
     return { ok: true, applied: prepared.map((change) => change.applied), errors: [] };
+}
+let applyPatchQueue = Promise.resolve();
+/** Serialize patch transactions in this process so preparation cannot race another patch call. */
+export function executeApplyPatch(changes) {
+    const run = applyPatchQueue.then(() => executeApplyPatchUnlocked(changes));
+    applyPatchQueue = run.then(() => undefined, () => undefined);
+    return run;
 }
 // ---------------------------------------------------------------------------
 // Format result for tool output

@@ -531,7 +531,7 @@ export function replace(
 		if (candidates.length === 1) {
 			const candidate = candidates[0];
 			const idx = content.indexOf(candidate);
-			if (idx !== -1) {
+			if (idx !== -1 && countOccurrences(content, candidate) === 1) {
 				const result = content.slice(0, idx) + newString + content.slice(idx + candidate.length);
 				const strategyName = replacer.name
 					.replace("Replacer", "")

@@ -38,7 +38,10 @@ function formatOkText(fp: string, changedRange: [number, number], dryRun: boolea
 	const start = changedRange[0] + 1;
 	const end = changedRange[1] + 1;
 	const prefix = dryRun ? "[DRY-RUN]" : "[OK]";
-	let text = `${prefix} ${fp} ${dryRun ? "would edit" : "edited"} (lines ${start}-${end})`;
+	let text =
+		changedRange[1] < changedRange[0]
+			? `${prefix} ${fp} ${dryRun ? "would edit" : "edited"} (no remaining lines)`
+			: `${prefix} ${fp} ${dryRun ? "would edit" : "edited"} (lines ${start}-${end})`;
 	if (warnings.length > 0) {
 		text += `\n[${warnings.length} boundary warning(s)]\n${warnings.join("\n")}`;
 	}

@@ -134,4 +134,13 @@ describe("loadPiDiffConfig", () => {
 		const config = loadPiDiffConfig(tmpDir);
 		expect(config.lineNumbers).toBe(true);
 	});
+
+	it("keeps explicit cwd caches isolated", () => {
+		const otherDir = mkdtempSync(join(tmpdir(), "pi-diff-config-test-other-"));
+		writeFileSync(join(tmpDir, "pi-diff.json"), JSON.stringify({ lineNumbers: false }), "utf-8");
+		writeFileSync(join(otherDir, "pi-diff.json"), JSON.stringify({ lineNumbers: true }), "utf-8");
+
+		expect(loadPiDiffConfig(tmpDir).lineNumbers).toBe(false);
+		expect(loadPiDiffConfig(otherDir).lineNumbers).toBe(true);
+	});
 });

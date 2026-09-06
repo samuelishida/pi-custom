@@ -241,15 +241,17 @@ function formatReadLine(lineNo1, hash, line) {
     return `${pad}${n}${SEP}${hash}${SEP}${line}`;
 }
 export function formatHashlineReadLines(fileContent, startLine = 1, endLine = Infinity) {
-    const lines = fileContent.split("\n");
+    const lines = fileContent.replace(/\r\n/g, "\n").replace(/\r/g, "\n").split("\n");
     const hashes = hashLines(fileContent);
-    const startIdx = Math.max(0, startLine - 1);
-    const endIdx = Math.min(lines.length, Number.isFinite(endLine) ? endLine : lines.length);
+    const safeStart = Number.isFinite(startLine) ? Math.max(1, Math.floor(startLine)) : 1;
+    const safeEnd = Number.isFinite(endLine) ? Math.max(safeStart, Math.floor(endLine)) : lines.length;
+    const startIdx = safeStart - 1;
+    const endIdx = Math.min(lines.length, safeEnd);
     const out = [];
     for (let i = startIdx; i < endIdx; i++) {
         out.push(formatReadLine(i + 1, hashes[i], lines[i]));
     }
-    return { text: out.join("\n"), lineCount: out.length, startLine, endLine: endIdx };
+    return { text: out.join("\n"), lineCount: out.length, startLine: safeStart, endLine: endIdx };
 }
 /** @deprecated Use formatHashlineReadLines */
 export function formatHashlineReadView(fileContent) {

@@ -26,7 +26,7 @@ import { extname, relative } from "node:path";
 import { codeToANSI } from "@shikijs/cli";
 import * as Diff from "diff";
 import { executeApplyPatch, formatApplyPatchResult } from "./core/apply-patch.js";
-import { configIndicatorStyle, loadPiDiffConfig } from "./core/config.js";
+import { configFileHeader, configIndicatorStyle, configLineNumbers, configLongLines, configMaxPreviewLines, configMaxRenderLines, configSplitMinCodeWidth, configSplitMinWidth, configWordDiffMinSimilarity, loadPiDiffConfig, } from "./core/config.js";
 import { computeHunkBlocks, getSepStyle, parseDiff, parsePatchFiles, resolveSepStyle, sepLabelSplit, sepLabelUnified, } from "./core/diff.js";
 import { applyDiffPalette as applySharedDiffPalette, lang as detectDiffLanguage, renderSplit as renderSharedSplit, resolveDiffColors as resolveSharedDiffColors, themeCacheKey as sharedThemeCacheKey, } from "./review/hunk-preview.js";
 const ARROW_PREFIXED_TOOL_HEADERS = new Set(["write", "create", "edit", "apply_patch"]);
@@ -214,13 +214,23 @@ function autoDeriveBgFromTheme(theme) {
 }
 /** Load diff theme config from .pi/settings.json (project-level, then global). */
 function loadDiffConfig() {
+    const piConfig = loadPiDiffConfig();
     const paths = [`${process.cwd()}/.pi/settings.json`, `${process.env.HOME ?? ""}/.pi/settings.json`];
+    let merged = {
+        diffTheme: piConfig.theme,
+        diffColors: piConfig.colors,
+        shikiTheme: piConfig.shikiTheme,
+    };
     for (const p of paths) {
         try {
             if (existsSync(p)) {
                 const raw = JSON.parse(readFileSync(p, "utf-8"));
                 if (raw.diffTheme || raw.diffColors) {
-                    return { diffTheme: raw.diffTheme, diffColors: raw.diffColors };
+                    merged = {
+                        ...merged,
+                        diffTheme: raw.diffTheme ?? merged.diffTheme,
+                        diffColors: { ...(merged.diffColors ?? {}), ...(raw.diffColors ?? {}) },
+                    };
                 }
             }
         }
@@ -228,7 +238,7 @@ function loadDiffConfig() {
             // skip invalid files
         }
     }
-    return {};
+    return merged;
 }
 /** Apply diff palette from settings → preset → (auto-derive deferred) → defaults.
  *  Called once during extension initialization. */
@@ -309,7 +319,7 @@ function applyDiffPalette() {
         FG_SAFE_MUTED = v;
     });
     // --- Shiki syntax theme ---
-    const shiki = ov.shikiTheme ?? preset?.shikiTheme;
+    const shiki = ov.shikiTheme ?? config.shikiTheme ?? preset?.shikiTheme;
     if (shiki)
         THEME = shiki;
     // --- Rebuild derived constants ---
@@ -348,20 +358,23 @@ function envBg(name, fallback) {
 // --- Split-view thresholds ---
 // Split is preferred when there's real room. At narrow widths, a clean stacked
 // (unified) view is better than a cramped split with wrapping.
-const SPLIT_MIN_WIDTH = envInt("DIFF_SPLIT_MIN_WIDTH", 80); // allow split in normal terminals
-const SPLIT_MIN_CODE_WIDTH = envInt("DIFF_SPLIT_MIN_CODE_WIDTH", 24); // short balanced hunks can split
+const SPLIT_MIN_WIDTH = envInt("DIFF_SPLIT_MIN_WIDTH", configSplitMinWidth() ?? 80); // allow split in normal terminals
+const SPLIT_MIN_CODE_WIDTH = envInt("DIFF_SPLIT_MIN_CODE_WIDTH", configSplitMinCodeWidth() ?? 24); // short balanced hunks can split
 const SPLIT_MAX_WRAP_RATIO = 0.35; // wrap-heavy hunks fall back to unified
 const SPLIT_MAX_WRAP_LINES = 10; // absolute cap before unified fallback
 // --- Terminal bounds ---
 const MAX_TERM_WIDTH = 210; // max for 1728px wide display (~205 cols at typical font)
 const DEFAULT_TERM_WIDTH = 200; // safe default for 1728x1117 resolution
 // --- Rendering limits ---
-const MAX_PREVIEW_LINES = 60; // was 50 — show slightly more context in edit preview
-const MAX_RENDER_LINES = 150; // was 120 — show more of the diff in write tool
+const MAX_PREVIEW_LINES = configMaxPreviewLines() ?? 60; // was 50 — show slightly more context in edit preview
+const MAX_RENDER_LINES = configMaxRenderLines() ?? 150; // was 120 — show more of the diff in write tool
 const MAX_HL_CHARS = 80_000; // was 50k — allow syntax hl for larger diffs
 const CACHE_LIMIT = 192; // was 128 — bigger cache for multi-file sessions
 // --- Word diff ---
-const WORD_DIFF_MIN_SIM = 0.15; // was 0.2 — show word diffs for slightly less similar lines
+const WORD_DIFF_MIN_SIM = configWordDiffMinSimilarity() ?? 0.15; // was 0.2 — show word diffs for slightly less similar lines
+const SHOW_LINE_NUMBERS = configLineNumbers() ?? true;
+const SHOW_FILE_HEADER = configFileHeader() ?? true;
+const LONG_LINES = configLongLines() ?? "wrap";
 // --- Wrapping ---
 // Adaptive: narrow terminals truncate aggressively, wide terminals allow wrapping.
 // Actual wrap rows are computed per-render via adaptiveWrapRows().
@@ -577,6 +590,8 @@ function normalizeShikiContrast(ansi) {
 }
 /** Wrap ANSI-encoded string into rows of `w` visible chars. Max `maxRows` rows; last row truncates with ›. */
 function wrapAnsi(s, w, maxRows = adaptiveWrapRows(), fillBg = "") {
+    if (LONG_LINES === "scroll")
+        maxRows = 1;
     if (w <= 0)
         return [""];
     const plain = strip(s);
@@ -647,6 +662,8 @@ function wrapAnsi(s, w, maxRows = adaptiveWrapRows(), fillBg = "") {
     return rows;
 }
 function lnum(n, w, fg = FG_LNUM) {
+    if (!SHOW_LINE_NUMBERS)
+        return " ".repeat(w);
     if (n === null)
         return " ".repeat(w);
     const v = String(n);
@@ -1241,7 +1258,7 @@ export default async function diffRendererExtension(pi) {
         const leftPad = " ".repeat(headerLeftPad ?? TOOL_HEADER_LEFT_PAD);
         const content = meta !== undefined && meta !== null
             ? `${leftPad}${meta}${suffix}`
-            : `${leftPad}${theme.fg("toolTitle", theme.bold(formatToolHeaderName(label ?? "")))} ${formatToolHeaderPath(theme, sp(filePath ?? ""))}${suffix}`;
+            : `${leftPad}${theme.fg("toolTitle", theme.bold(formatToolHeaderName(label ?? "")))}${SHOW_FILE_HEADER && filePath ? ` ${formatToolHeaderPath(theme, sp(filePath))}` : ""}${suffix}`;
         return `${"\n".repeat(topPad)}${content}${"\n".repeat(bottomPad)}`;
     }
     function formatToolFrameHeader(opts) {

@@ -470,15 +470,18 @@ session files.
 **Review result:** deterministic logic/security/simplification/architecture scan
 plus manual vendor and installer review completed. Fixed release-blocking ignored
 `dist/` artifacts, unavailable Feynman tool names, missing bundle-digest
-enforcement, and production `diff` DoS advisory. Remaining note: structural E2E
-proves pi-diff discovery/load only; real write/edit rendering still belongs to
-an opt-in interactive lane.
+enforcement, and production `diff` DoS advisory. Post-review remediation also
+wired pi-diff config through rendering, added explicit Feynman model/auto-exit
+behavior and autoresearch evidence handoff, serialized atomic edits, fail-closed
+stale/symlink/mixed-EOL handling, CRLF normalization, ambiguity rejection, and
+regular-frontmatter E2E checks. Remaining note: structural E2E proves discovery/
+load only; real write/edit rendering still belongs to an opt-in interactive lane.
 
 #### Verification
 - `npm run check` passed.
 - `bash scripts/e2e-check.sh` passed: 13 extensions, 19 bundled skills, 10
   agents, 2 prompts; global skill discovery reported separately.
-- `bundled/extensions/pi-diff`: 154 tests passed; `npm audit --omit=dev` found
+- `bundled/extensions/pi-diff`: 156 tests passed; `npm audit --omit=dev` found
   0 vulnerabilities.
 - `git diff --check` passed.
 

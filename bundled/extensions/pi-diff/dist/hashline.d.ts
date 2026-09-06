@@ -40,7 +40,7 @@ export interface HashlineApplyOk {
 export interface HashlineApplyError {
     ok: false;
     error: string;
-    code: "E_STALE_ANCHOR" | "E_BAD_RANGE" | "E_OVERLAP" | "E_EMPTY" | "E_NOT_INITIALIZED" | "E_READ_FAILED" | "E_WRITE_FAILED" | "E_BOUNDARY_DUP";
+    code: "E_STALE_ANCHOR" | "E_BAD_RANGE" | "E_OVERLAP" | "E_EMPTY" | "E_NOT_INITIALIZED" | "E_READ_FAILED" | "E_WRITE_FAILED" | "E_STALE_FILE" | "E_MIXED_EOL" | "E_BOUNDARY_DUP";
     ref?: string;
     suggestions?: Array<{
         line: number;

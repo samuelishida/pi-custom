@@ -25,7 +25,7 @@ const CONFLICT_END_RE = /^>>>>>>>[ \t]*(.*)$/;
  * Returns all conflict regions found.
  */
 export function parseConflicts(content) {
-    const lines = content.split("\n");
+    const lines = content.replace(/\r\n/g, "\n").replace(/\r/g, "\n").split("\n");
     const regions = [];
     let i = 0;
     while (i < lines.length) {
