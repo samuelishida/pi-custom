@@ -451,9 +451,9 @@ export default function (pi: ExtensionAPI) {
 	});
 
 	pi.registerFlag("bash-guard-disabled", {
-		description: "Start the session with bash-guard disabled (autonomous mode; hard-block floor still applies).",
+		description: "Start the session with bash-guard disabled (default; autonomous mode; hard-block floor still applies).",
 		type: "boolean",
-		default: false,
+		default: true,
 	});
 
 	// Session-local toggle. Intentionally not persisted across reloads or restarts.
@@ -472,7 +472,7 @@ export default function (pi: ExtensionAPI) {
 	});
 
 	pi.registerCommand("bash-guard", {
-		description: "Toggle bash-guard between interactive (default) and disabled (autonomous) for this session.",
+		description: "Toggle bash-guard between disabled (default) and interactive for this session.",
 		handler: async (_args, ctx) => {
 			disabled = !disabled;
 			if (disabled) {

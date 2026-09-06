@@ -8,7 +8,13 @@ the session is interactive (main session) or non-interactive (spawned subagent).
 Behaviour is determined at registration time via the `PI_SUBAGENT_DEPTH` environment variable,
 which pi-subagents injects into every spawned process.
 
-### Main session (`PI_SUBAGENT_DEPTH` = 0 or unset) — interactive prompt
+### Main session (`PI_SUBAGENT_DEPTH` = 0 or unset) — disabled by default
+
+- Bash-guard starts disabled for normal sessions. Routine commands run without prompts.
+- The catastrophic-operation hard-block floor remains active while disabled.
+- Run `/bash-guard` to enable interactive prompting for the current session.
+
+When enabled, bash-guard uses an interactive prompt:
 
 - Heuristically detects destructive/questionable commands via shell-aware parsing
 - Prompts for **any** `git ...` command (escalates severity for especially risky ones: `git rm`,
