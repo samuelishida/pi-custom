@@ -23,6 +23,123 @@ Feynman templates were adapted from `fetch_content` to pi-config's
 `web_fetch({url})`. Source commits, package integrities, tree hashes, and the
 adaptation record live in [bundle-manifest.json](bundle-manifest.json).
 
+## Usage tips
+
+### Start a session
+
+```bash
+pi-custom                                    # interactive TUI session
+pi-custom "Refactor this module"             # one-shot prompt
+pi-custom --model openai/gpt-4o "..."        # pick a model for the run
+```
+
+Everything is a slash command with Tab completion. `pi` in the commands below
+also works when your `~/.local/bin/pi-custom` symlink is on `PATH`.
+
+### YOLO mode (muselinn permission chain)
+
+`pi-muselinn-harness` ships an 18-level policy chain with three operational
+modes: `auto`, `yolo`, `manual`. Sessions start in `manual` unless configured.
+
+- **Switch for the current session:** `/mode yolo`
+- **Persist as the startup mode** for fresh sessions:
+
+  ```json
+  {
+    "defaultMode": "yolo"
+  }
+  ```
+
+  in `~/.pi/agent/permissions.json` (global) or `.pi/permissions.json`
+  (project). On conflict, the **global** file wins. A session with recorded
+  `/mode` history restores its last-used mode; `defaultMode` only seeds fresh
+  sessions.
+
+> ⚠️ YOLO bypasses permission prompts, but destructive-command and
+> sensitive-file guards (`rm -rf`, `git push --force`, `.env`, `id_rsa`,
+> `*.key`) always ask and are never short-circuited. Use YOLO with care.
+
+### Muselinn orchestration (sub-agents, plan, tasks)
+
+The harness adds Kimi Code-style subsystems that stock pi lacks:
+
+```text
+/swarm on                                enable parallel sub-agents
+/agent "<task>" <repo>                   spawn a focused sub-agent
+/goal Refactor the auth module           set a goal with budget tracking
+/todo init "Phase 1: scanner"            start a phased task plan
+/plan                                    plan mode (read-only exploration + approval gate)
+/pause                                   freeze everything; esc/enter/space/ctrl+c resumes
+/steer                                    inject direction at runtime
+/cron <5-field> <prompt>                 schedule background prompts
+/tui style plain|boxed|compact           switch editor chrome anytime
+```
+
+Model-callable tools include `agent_swarm`, `agent`, `enter_plan_mode`,
+`run_background`, `cron_create`, `todo_list`, and `ask_user_question` (tabbed
+multi-question dialog).
+
+### Hawk skills
+
+19 skills ship bundled, including the 17 hawk-skills-md workflow skills
+(`plan-small`, `plan-large`, `implement-plan`, `code-audit`, `fix-bug`,
+`refactor`, `learn-system`, `compound`, `remove-code`, …). Invoke one directly
+or let pi pick it from the description:
+
+```text
+/plan-small                            run a skill as a slash command
+/implement-plan                        execute the .plans//plan.md incrementally
+```
+
+To reference a skill in a prompt so the model loads it, just name it —
+each `SKILL.md` exposes a `description` pi matches against your intent.
+Skills live under `~/.pi/agent/skills/`. Disable them with `--no-skills`.
+
+### Change models
+
+Set defaults in `~/.pi/agent/settings.json` (or `.pi/settings.json` for a
+project):
+
+- `defaultProvider`: `"ollama"`, `"anthropic"`, `"openai"`, `"google"`, …
+- `defaultModel`: a model ID, e.g. `"smtek/Qwen3.8-27B-AD:IQ4_XS"`
+- `defaultThinkingLevel`: `"off"`, `"low"`, `"medium"`, `"high"`, `"xhigh"`,
+  `"max"`
+
+Interactively, `/model <pattern>` (Ctrl+S saves), `/thinking` (Ctrl+S saves),
+and the CLI `--provider` / `--model` / `--models` flags (Ctrl+P cycles models).
+
+### Launch pi with local Ollama models
+
+Declare local models in `~/.pi/agent/models.json`:
+
+```json
+{
+  "providers": {
+    "ollama": {
+      "baseUrl": "http://localhost:11434/v1",
+      "api": "openai-completions",
+      "apiKey": "ollama",
+      "models": [{ "id": "qwen2.5-coder:7b" }]
+    }
+  }
+}
+```
+
+For reasoning-capable models on OpenAI-compatible servers that do not
+understand the `developer` role or `reasoning_effort`, add:
+
+```json
+"compat": {
+  "supportsDeveloperRole": false,
+  "supportsReasoningEffort": false
+}
+```
+
+Then run `pi-custom --model ollama/qwen2.5-coder:7b`, or set
+`defaultProvider`/`defaultModel` to it in `settings.json`. Ensure Ollama is
+serving first (`ollama serve`). `ollama run qwen2.5-coder:7b` before starting
+pi will pre-load the model.
+
 ## Install
 
 Requirements: Node.js >=22.19, npm, and a populated bundled npm cache. Bun is
