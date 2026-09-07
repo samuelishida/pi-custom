@@ -5,8 +5,8 @@ prompt templates. Pi core remains unmodified.
 
 ## What is bundled
 
-- 16 extensions: guardrail, custom-header, prompt-snippets,
-  bash-guard, browser, web-fetch, web-search, pi-undo-redo, pi-dictate,
+- 15 extensions: guardrail, custom-header, prompt-snippets,
+  browser, web-fetch, web-search, pi-undo-redo, pi-dictate,
   pi-observational-memory, pi-interactive-subagents, pi-diff, pi-mcp-adapter,
   pi-hermes-memory, pi-background-tasks, and pi-muselinn-harness.
 - 19 skills: 17 hawk-skills-md skills plus Feynman's `autoresearch` and
@@ -62,10 +62,6 @@ loading does not require Chromium; browser calls do.
 syntax-highlighted unified or split diffs. Configure it with the bundled
 `pi-diff.example.json` and `pi-diff.schema.json` references, or disable tools
 using pi-diff's documented settings.
-
-`bash-guard` is installed but disabled by default for main sessions. Run
-`/bash-guard` to enable interactive Bash-risk prompts for the current session;
-catastrophic-operation hard blocks remain active while disabled.
 
 The autoresearch workflow uses `researcher`, `verifier`, and `reviewer` when
 available. Its final cited brief belongs in `outputs/` with a matching

@@ -143,7 +143,7 @@ done
 for src in "$ROOT_DIR"/bundled/agents/*.md; do cp -a "$src" "$stage_dir/agents-$(basename "$src")"; done
 for src in "$ROOT_DIR"/bundled/prompts/*.md; do cp -a "$src" "$stage_dir/prompts-$(basename "$src")"; done
 
-for name in bash-guard browser web-fetch pi-undo-redo pi-dictate pi-observational-memory pi-interactive-subagents pi-diff pi-mcp-adapter pi-hermes-memory pi-background-tasks pi-muselinn-harness; do
+for name in browser web-fetch pi-undo-redo pi-dictate pi-observational-memory pi-interactive-subagents pi-diff pi-mcp-adapter pi-hermes-memory pi-background-tasks pi-muselinn-harness; do
 	if [[ -f "$stage_dir/$name/package-lock.json" ]]; then
 		(cd "$stage_dir/$name" && npm ci --omit=dev --ignore-scripts --offline --cache "$ROOT_DIR/bundled/npm-cache" > "$ROOT_DIR/.preinstall-$name.log" 2>&1) || {
 			echo "offline dependency install failed: $name (see .preinstall-$name.log)" >&2
