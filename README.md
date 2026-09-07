@@ -87,7 +87,8 @@ multi-question dialog).
 or let pi pick it from the description:
 
 ```text
-/plan-small                            run a skill as a slash command
+/plan-large                            run plan skill as a slash command
+/review-plan                           stress test a plan file
 /implement-plan                        execute the .plans//plan.md incrementally
 ```
 
