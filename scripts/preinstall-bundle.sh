@@ -67,7 +67,11 @@ guardrail_bytes=$(manifest_value sources.guardrail.bytes)
 for item in \
 	"pi-undo-redo|bundled/npm-packages/pi-undo-redo-0.1.1.tgz|sources.npm.pi-undo-redo.sha256" \
 	"pi-dictate|bundled/npm-packages/pi-dictate-1.0.6.tgz|sources.npm.pi-dictate.sha256" \
-	"pi-observational-memory|bundled/npm-packages/pi-observational-memory-3.0.4.tgz|sources.npm.pi-observational-memory.sha256"; do
+	"pi-observational-memory|bundled/npm-packages/pi-observational-memory-3.0.4.tgz|sources.npm.pi-observational-memory.sha256" \
+	"pi-mcp-adapter|bundled/npm-packages/pi-mcp-adapter-2.32.1.tgz|sources.npm.pi-mcp-adapter.sha256" \
+	"pi-hermes-memory|bundled/npm-packages/pi-hermes-memory-0.9.8.tgz|sources.npm.pi-hermes-memory.sha256" \
+	"pi-background-tasks|bundled/npm-packages/pi-background-tasks-2.5.0.tgz|sources.npm.pi-background-tasks.sha256" \
+	"pi-muselinn-harness|bundled/npm-packages/pi-muselinn-harness-0.9.22.tgz|sources.npm.pi-muselinn-harness.sha256"; do
 	IFS='|' read -r name archive manifest_path <<< "$item"
 	[[ "$(sha256_file "$ROOT_DIR/$archive")" == "$(manifest_value "$manifest_path")" ]] || {
 		echo "$name tarball SHA-256 mismatch" >&2; exit 1;
@@ -78,7 +82,11 @@ for item in \
 	"bundled/extensions|bundled.extensionsTreeSha256" \
 	"bundled/agents|bundled.agentsTreeSha256" \
 	"bundled/npm-cache|bundled.npmCacheTreeSha256" \
-	"bundled/extensions/pi-diff|sources.git.pi-diff.treeSha256"; do
+	"bundled/extensions/pi-diff|sources.git.pi-diff.treeSha256" \
+	"bundled/extensions/pi-mcp-adapter|sources.git.pi-mcp-adapter.treeSha256" \
+	"bundled/extensions/pi-hermes-memory|sources.git.pi-hermes-memory.treeSha256" \
+	"bundled/extensions/pi-background-tasks|sources.git.pi-background-tasks.treeSha256" \
+	"bundled/extensions/pi-muselinn-harness|sources.git.pi-muselinn-harness.treeSha256"; do
 	IFS='|' read -r rel_root manifest_path <<< "$item"
 	[[ "$(tree_sha256 "$rel_root")" == "$(manifest_value "$manifest_path")" ]] || {
 		echo "$rel_root tree SHA-256 mismatch" >&2; exit 1;
@@ -114,7 +122,6 @@ replace_path() {
 }
 
 cp -a "$ROOT_DIR/bundled/extensions/guardrail.ts" "$stage_dir/guardrail.ts"
-cp -a "$ROOT_DIR/bundled/extensions/ask-user-question.ts" "$stage_dir/ask-user-question.ts"
 cp -a "$ROOT_DIR/bundled/extensions/custom-header.ts" "$stage_dir/custom-header.ts"
 
 for src in "$ROOT_DIR"/bundled/extensions/*/; do
@@ -136,7 +143,7 @@ done
 for src in "$ROOT_DIR"/bundled/agents/*.md; do cp -a "$src" "$stage_dir/agents-$(basename "$src")"; done
 for src in "$ROOT_DIR"/bundled/prompts/*.md; do cp -a "$src" "$stage_dir/prompts-$(basename "$src")"; done
 
-for name in bash-guard browser web-fetch pi-undo-redo pi-dictate pi-observational-memory pi-interactive-subagents pi-diff; do
+for name in bash-guard browser web-fetch pi-undo-redo pi-dictate pi-observational-memory pi-interactive-subagents pi-diff pi-mcp-adapter pi-hermes-memory pi-background-tasks pi-muselinn-harness; do
 	if [[ -f "$stage_dir/$name/package-lock.json" ]]; then
 		(cd "$stage_dir/$name" && npm ci --omit=dev --ignore-scripts --offline --cache "$ROOT_DIR/bundled/npm-cache" > "$ROOT_DIR/.preinstall-$name.log" 2>&1) || {
 			echo "offline dependency install failed: $name (see .preinstall-$name.log)" >&2
@@ -160,7 +167,6 @@ NODE
 fi
 
 replace_path "$stage_dir/guardrail.ts" "$AGENT_DIR/extensions/guardrail.ts"
-replace_path "$stage_dir/ask-user-question.ts" "$AGENT_DIR/extensions/ask-user-question.ts"
 replace_path "$stage_dir/custom-header.ts" "$AGENT_DIR/extensions/custom-header.ts"
 for src in "$stage_dir"/*/; do
 	[[ -d "$src" ]] || continue

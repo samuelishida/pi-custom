@@ -59,6 +59,26 @@
         "version": "3.0.4",
         "integrity": "sha512-nxuhNbZf99YbGfhDX25Nl7BjPOY8H9Z2holhDsYZiI5jgsOgGSvwKssaTqNxwYZmR8c8l1g7/eNr9O96mbDpmg==",
         "sha256": "af2741c6d65f3d6873ed05d0458ecad689b01a16600fdf1a650ba301b47d7756"
+      },
+      "pi-mcp-adapter": {
+        "version": "2.32.1",
+        "integrity": "sha512-GNLYa2U9T5ZqIhZmhx/RTenEjfakJTelq/z6Q+At5SIxyuYvrvobriDEVsnx+lqetVDizUCudTWLfdZytQu0rg==",
+        "sha256": "5f7b79fe118699967b1c524d8bb92ee5939d108acd93422ceeae7eb2a3963087"
+      },
+      "pi-hermes-memory": {
+        "version": "0.9.8",
+        "integrity": "sha512-s32Zm8HkxbFVszeGwxMAosBeH8r9+yL4wnVrwPl5HveMdpYc8HT1esN8TzN2+mPsqu6G6Eo7ZFPNuTmPEqLqTA==",
+        "sha256": "160f12777f38cba8e8c95711743b483547320b2c1f57f6edacbdbd67d656ae19"
+      },
+      "pi-background-tasks": {
+        "version": "2.5.0",
+        "integrity": "sha512-YrOedXIYZYgLctffizuu2V5bI8u87Ex4ChFipXpVazsY75J9X98/9K7pO5Y7egB+6fgkE9KQPDxdDkdkLenhng==",
+        "sha256": "86375aedc2578cc6fd272e59f2fa5c3abda8872084dcf3f2cc118a239a391853"
+      },
+      "pi-muselinn-harness": {
+        "version": "0.9.22",
+        "integrity": "sha512-PdWgR+2Hhb3kPX9+k+wodyj/jLlpCVbVFO7NoMHXDx2TyvJtrIfSkiKYEGX2zTMzfJVb78hlyb2ZSAWp5TwPGg==",
+        "sha256": "1ded30f925b3bf2d31c4a88def63548f8cf6c37742d6bb12c5df9231f1b0d9d2"
       }
     },
     "git": {
@@ -71,7 +91,7 @@
         "repo": "buddingnewinsights/pi-diff",
         "commit": "8bf181c88445db71e9dbaa71de0e839e5e207c16",
         "version": "0.8.1",
-        "treeSha256": "97fda99308ce6c0fe34207d00733891c0b12d78f6019a4b9afd0fb986fab26ba",
+        "treeSha256": "21fd7d0eb16b5cb7fc490f2cfed0c67a6f5209747c97725c12d80cc74cc0e9ac",
         "runtimeDependencies": {
           "@earendil-works/pi-coding-agent": "0.85.1",
           "@earendil-works/pi-tui": "0.85.1",
@@ -79,13 +99,33 @@
           "diff": "8.0.3",
           "xxhash-wasm": "1.1.0"
         }
+      },
+      "pi-mcp-adapter": {
+        "repo": "nicobailon/pi-mcp-adapter",
+        "version": "2.32.1",
+        "treeSha256": "a36fa5f643b21e1a0a2e13a69fa13e00aa1f97803784b0a1e809c17dc8790bde"
+      },
+      "pi-hermes-memory": {
+        "repo": "chandra447/pi-hermes-memory",
+        "version": "0.9.8",
+        "treeSha256": "f224913cd913a45c629136182919fa780115a9045fd2bac63abad40c13ddf3aa"
+      },
+      "pi-background-tasks": {
+        "repo": "ismailsaleekh/pi-background-tasks",
+        "version": "2.5.0",
+        "treeSha256": "7f6f5ae11cdd10819a4157c0348671ba21b59f08b9d130b91bd3b455f994a139"
+      },
+      "pi-muselinn-harness": {
+        "repo": "MuseLinn/pi-muselinn-harness",
+        "version": "0.9.22",
+        "treeSha256": "a902b20f7399c9b054f948c2be263117144770b082dc55976dbf30b68f3bc9ed"
       }
     }
   },
   "bundled": {
-    "extensionsTreeSha256": "23b64b75e41c889ce4724d8a6453a91358ba1a74b6b38db3ef681b7b6db632e2",
+    "extensionsTreeSha256": "5f2dd08c6e3f77a9e93e9b6e148a20f6ae311171ad54e07cf87beaadc994c228",
     "agentsTreeSha256": "7ee1af58b8b8974f29a9bbbcfa589a14c1dd712ccbab607eca4b6e566545678e",
-    "npmCacheTreeSha256": "1a707c95ce42ca86dc856c4c14210d7eefc0f5082bfdd54a441a63d947e3ada3"
+    "npmCacheTreeSha256": "59b8f105e2588a803c5ea5edeada2e2b7eb02f234b03b207203108502b3e5238"
   },
   "toolAdaptations": {
     "feynmanFetch": {

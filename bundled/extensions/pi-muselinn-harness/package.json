@@ -1,0 +1,72 @@
+{
+  "name": "pi-muselinn-harness",
+  "version": "0.9.22",
+  "description": "Kimi Code-style agent orchestration harness for Pi coding agent — Swarm (concurrent subagents + braille TUI), Goal (lifecycle + budget + queue), Plan (plan mode + tool restrictions), Permission (18-level policy chain: auto/yolo/manual), Task (background + cron), Hooks (config.toml [[hooks]] engine: 16 events, blockable PreToolUse/Stop/UserPromptSubmit), Skills (pi-native seven-scope scanner), TUI (Kimi-style boxed editor chrome: plain/boxed/compact + /tui + render timing probe)",
+  "type": "module",
+  "main": "index.ts",
+  "scripts": {
+    "test": "node tests/run-all.mjs",
+    "typecheck": "tsc -p tsconfig.json",
+    "version-patch": "npm version patch --no-git-tag-version"
+  },
+  "author": "MuseLinn",
+  "license": "MIT",
+  "pi": {
+    "extensions": [
+      "./index.ts"
+    ]
+  },
+  "files": [
+    "index.ts",
+    "state.ts",
+    "notify-augment.d.ts",
+    "packages/",
+    "ask/",
+    "todo/",
+    "webfetch/",
+    "plugin/",
+    "swarm/",
+    "task/",
+    "tui/",
+    "pause/",
+    "README.md",
+    "README.zh-CN.md",
+    "LICENSE"
+  ],
+  "dependencies": {
+    "@earendil-works/pi-ai": "0.85.1",
+    "@earendil-works/pi-coding-agent": "0.85.1",
+    "@earendil-works/pi-tui": "0.85.1",
+    "typebox": "^1.3.3"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/MuseLinn/pi-muselinn-harness.git"
+  },
+  "keywords": [
+    "pi-package",
+    "pi-extension",
+    "pi",
+    "swarm",
+    "goal",
+    "plan",
+    "permission",
+    "hooks",
+    "subagent",
+    "agent",
+    "concurrent",
+    "batch",
+    "parallel",
+    "orchestration",
+    "kimi-code",
+    "auto-mode",
+    "yolo-mode",
+    "braille",
+    "tui",
+    "lifecycle"
+  ],
+  "devDependencies": {
+    "jiti": "^2.7.0",
+    "typescript": "^5.5.0"
+  }
+}
