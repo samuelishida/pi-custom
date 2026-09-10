@@ -48,18 +48,7 @@ const TARGETS = {
 };
 
 const SKILLS = ["autoresearch", "deep-research"];
-const AGENTS = [
-  "researcher",
-  "verifier",
-  "reviewer",
-  "audit-architecture",
-  "audit-logic",
-  "audit-research",
-  "audit-security",
-  "audit-simplification",
-  "audit-triage",
-  "plan-reviewer",
-];
+const AGENTS = ["researcher", "verifier", "reviewer"];
 
 function log(msg) {
   console.log(msg);

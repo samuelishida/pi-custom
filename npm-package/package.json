@@ -1,7 +1,7 @@
 {
   "name": "pi-research-skills",
   "version": "1.0.0",
-  "description": "Tool-agnostic autoresearch and deep-research skills plus researcher, verifier, and reviewer agents. Installs into Claude Code, Codex, or pi.",
+  "description": "Tool-agnostic autoresearch and deep-research skills plus researcher, verifier, and reviewer agents, adapted from Feynman's research workflows. Installs into Claude Code, Codex, or pi.",
   "license": "MIT",
   "author": {
     "name": "Samuel Ishida"

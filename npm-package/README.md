@@ -2,7 +2,6 @@
 
 Tool-agnostic `autoresearch` and `deep-research` skills plus `researcher`,
 `verifier`, and `reviewer` agents, adapted from Feynman's research workflows.
-Also bundles the hawk-skills audit agents.
 
 The skills and agents are **tool-agnostic**: they work in Claude Code, Codex,
 pi, and any agent that reads the [Agent Skills](https://agentskills.io) open
@@ -41,9 +40,6 @@ Use `--dry-run` to preview, and `--uninstall` to remove.
   artifacts.
 - `verifier` — adds inline citations and verifies every source URL.
 - `reviewer` — adversarial research critique and verification passes.
-- `audit-architecture`, `audit-logic`, `audit-research`, `audit-security`,
-  `audit-simplification`, `audit-triage`, `plan-reviewer` — hawk-skills code
-  audit and plan-review context gatherers.
 
 ## Usage
 
@@ -53,5 +49,5 @@ Use `--dry-run` to preview, and `--uninstall` to remove.
 
 ## Source
 
-Adapted from Feynman's research workflows and the hawk-skills-md agent set.
-See the parent `pi-custom` repo for the full distribution.
+Adapted from Feynman's research workflows. See the parent `pi-custom` repo for
+the full distribution.
