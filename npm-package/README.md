@@ -1,4 +1,4 @@
-# pi-research-skills
+# research-skills
 
 Tool-agnostic `autoresearch` and `deep-research` skills plus `researcher`,
 `verifier`, and `reviewer` agents, adapted from Feynman's research workflows.
@@ -11,7 +11,7 @@ search, fetch, shell, and subagent tools the host agent exposes.
 ## Install
 
 ```bash
-npm install -g pi-research-skills
+npm install -g research-skills
 pi-research-install --all
 ```
 
