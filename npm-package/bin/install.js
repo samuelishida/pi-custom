@@ -1,17 +1,17 @@
 #!/usr/bin/env node
 "use strict";
 
-// pi-research-skills installer
+// research-skills installer
 // Copies tool-agnostic skills and agents into Claude Code, Codex, or pi.
 //
 // Usage:
-//   pi-research-install                 # auto-detect or install to all
-//   pi-research-install --claude        # install to ~/.claude
-//   pi-research-install --codex         # install to ~/.codex
-//   pi-research-install --pi            # install to ~/.pi/agent
-//   pi-research-install --all           # install to all three
-//   pi-research-install --dry-run       # show what would be copied
-//   pi-research-install --uninstall     # remove installed files
+//   research-install                 # auto-detect or install to all
+//   research-install --claude        # install to ~/.claude
+//   research-install --codex         # install to ~/.codex
+//   research-install --pi            # install to ~/.pi/agent
+//   research-install --all           # install to all three
+//   research-install --dry-run       # show what would be copied
+//   research-install --uninstall     # remove installed files
 
 const fs = require("fs");
 const path = require("path");

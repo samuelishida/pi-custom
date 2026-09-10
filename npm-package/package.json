@@ -7,7 +7,7 @@
     "name": "Samuel Ishida"
   },
   "bin": {
-    "pi-research-install": "bin/install.js"
+    "research-install": "bin/install.js"
   },
   "files": [
     "bin/",

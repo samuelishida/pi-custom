@@ -12,15 +12,15 @@ search, fetch, shell, and subagent tools the host agent exposes.
 
 ```bash
 npm install -g research-skills
-pi-research-install --all
+research-install --all
 ```
 
 Or install to a specific agent:
 
 ```bash
-pi-research-install --claude   # ~/.claude
-pi-research-install --codex    # ~/.codex
-pi-research-install --pi       # ~/.pi/agent
+research-install --claude   # ~/.claude
+research-install --codex    # ~/.codex
+research-install --pi       # ~/.pi/agent
 ```
 
 Use `--dry-run` to preview, and `--uninstall` to remove.
