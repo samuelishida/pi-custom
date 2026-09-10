@@ -191,3 +191,21 @@ Forked from [HazAT/pi-interactive-subagents](https://github.com/HazAT/pi-interac
 ## License
 
 MIT
+
+## Note: bundled research skills do not use this extension
+
+The bundled `deepresearch` and `autoresearch` prompt templates and their
+`deep-research` / `autoresearch` skills run parallel research with the built-in
+pi background system (`bg_run` with `pi -p` children, `bg_delegate`,
+`fusion_research` / `fusion_investigate`) instead of this extension. This
+extension remains available for interactive tmux-pane subagents, but it is not
+a dependency of the research workflows.
+
+Known issues:
+
+- Requires pi to run inside tmux (`TMUX` env var set); the `subagent` tool
+  refuses to spawn otherwise.
+- The spawned child pi processes can hang in the `starting` phase (idle event
+  loop, no session file created) in some environments; the parent session
+  reports them as stalled. Prefer `bg_run` with `pi -p` children for
+  autonomous work.

@@ -12,7 +12,8 @@ Tool names are literal. Use only tools visible in the current tool set.
 - Fetch URLs with `web_fetch` using `{url: "https://…"}`; do not call `fetch_content`, bare `fetch`, `WebFetch`, or `read_url_content`.
 - Use visible Feynman alpha tools such as `alpha_search` when present. For shell access, call `feynman alpha ...`; do not call the user's bare global `alpha` binary.
 - To ask the user a question, write plain chat text and wait for the next user message. Do not call `ask_user_question`, `ask_user`, `ask_followup_question`, or `user_choice`.
-- Do not use `Task` as an agent dispatcher. Use only the visible `subagent` tool when it exists.
+- Do not use the tmux-based `subagent` tool. Run parallel research with the built-in pi background system instead: `bg_run` with a `pi -p "…"` child (`isAgent: true`), `bg_delegate` for read-only repo investigation, `fusion_research` / `fusion_investigate` for five-model research, or `run_background` / `agent` for built-in harness subagents.
+- If `web_search` is unavailable (e.g. "Missing Google Custom Search credentials"), treat it as blocked: fall back to `web_fetch` on known URLs and record the capability as blocked.
 - If a tool returns `Tool not found` or `Invalid URL`, do not retry the same invalid call. Map to a canonical visible tool and valid arguments, or record the capability as blocked.
 
 Start an autoresearch optimization loop for: $@
@@ -29,7 +30,7 @@ Otherwise, collect the following from the user before doing anything else:
 - The benchmark command to run
 - The metric name, unit, and direction (lower/higher is better)
 - Files in scope for changes
-- Maximum number of iterations (default: 20)
+- Maximum number of iterations (default: 50)
 
 ## Step 2: Environment
 
@@ -67,13 +68,13 @@ After the baseline and after meaningful iteration milestones, append a concise e
 ## Step 5: Evidence handoff
 
 After the loop reaches its stop condition, derive a short lowercase hyphenated
-slug from the optimization target. If the `subagent` tool is visible, run the
-bundled `researcher` agent first to gather sources and benchmark context, then
-run `verifier` against the draft, and finally run `reviewer` against the cited
-artifact. Pass each agent a unique output path under `outputs/`; do not rely on
-agent frontmatter to choose paths. If any agent or web capability is missing,
-record `Verification: BLOCKED` and the exact missing capability instead of
-claiming verification.
+slug from the optimization target. Gather sources and benchmark context with
+the built-in pi background system (no tmux): launch `bg_run` children running
+`pi -p "…"` (`isAgent: true`) for the researcher/verifier/reviewer roles, each
+writing to a unique output path under `outputs/`; or use `fusion_research` for
+targeted URL research. Do not rely on agent frontmatter to choose paths. If no
+background agent or web capability is available, record `Verification: BLOCKED`
+and the exact missing capability instead of claiming verification.
 
 Write the final cited brief to `outputs/<slug>.md` and matching provenance to
 `outputs/<slug>.provenance.md`. Include benchmark commands, raw evidence paths,
