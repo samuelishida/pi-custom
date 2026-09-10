@@ -1,0 +1,11 @@
+{
+  "name": "research",
+  "version": "1.0.0",
+  "description": "Tool-agnostic autoresearch and deep-research skills plus researcher, verifier, and reviewer agents, adapted from Feynman's research workflows. Works in Claude Code and any agent that reads Agent Skills.",
+  "author": {
+    "name": "Samuel Ishida"
+  },
+  "license": "MIT",
+  "homepage": "https://github.com/samuelishida/pi-custom",
+  "repository": "https://github.com/samuelishida/pi-custom"
+}

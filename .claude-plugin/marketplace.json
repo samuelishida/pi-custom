@@ -1,0 +1,17 @@
+{
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
+  "name": "pi-custom-research",
+  "description": "Tool-agnostic research skills and agents adapted from Feynman's autoresearch and deep-research workflows, plus hawk-skills audit agents.",
+  "owner": {
+    "name": "Samuel Ishida",
+    "url": "https://github.com/samuelishida"
+  },
+  "plugins": [
+    {
+      "name": "research",
+      "description": "Autoresearch and deep-research skills with researcher, verifier, and reviewer agents. Tool-agnostic; works in Claude Code and any Agent Skills reader.",
+      "source": "./claude-plugin",
+      "category": "research"
+    }
+  ]
+}
