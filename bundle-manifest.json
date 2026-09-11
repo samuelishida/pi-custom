@@ -123,7 +123,7 @@
     }
   },
   "bundled": {
-    "extensionsTreeSha256": "3da3d77b757cb81f5f3729c697bf510cf97fde5f96a28d519a27ab2550a9db99",
+    "extensionsTreeSha256": "a2995b7b5dd0e63b1ab987ab0c48992a38c16dc2b279da281e566c49b4792949",
     "agentsTreeSha256": "7ee1af58b8b8974f29a9bbbcfa589a14c1dd712ccbab607eca4b6e566545678e",
     "npmCacheTreeSha256": "59b8f105e2588a803c5ea5edeada2e2b7eb02f234b03b207203108502b3e5238"
   },
