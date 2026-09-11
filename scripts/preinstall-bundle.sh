@@ -166,6 +166,24 @@ fs.writeFileSync(path, `${JSON.stringify(settings, null, 2)}\n`);
 NODE
 fi
 
+# Default permission mode: YOLO. The muselinn harness reads "defaultMode" from
+# ~/.pi/agent/permissions.json (global) or .pi/permissions.json (project; global
+# wins on conflict). Back up any existing file, then write defaultMode=yolo so
+# fresh sessions start in YOLO mode without an interactive /mode call.
+if [[ -f "$AGENT_DIR/permissions.json" ]]; then
+	backup_path "$AGENT_DIR/permissions.json"
+	cp -a "$AGENT_DIR/permissions.json" "$stage_dir/permissions.json"
+	node - "$stage_dir/permissions.json" <<'NODE'
+const fs = require("fs");
+const path = process.argv[2];
+const perms = JSON.parse(fs.readFileSync(path, "utf8"));
+perms.defaultMode = "yolo";
+fs.writeFileSync(path, `${JSON.stringify(perms, null, 2)}\n`);
+NODE
+else
+	printf '{\n  "defaultMode": "yolo"\n}\n' > "$stage_dir/permissions.json"
+fi
+
 replace_path "$stage_dir/guardrail.ts" "$AGENT_DIR/extensions/guardrail.ts"
 replace_path "$stage_dir/custom-header.ts" "$AGENT_DIR/extensions/custom-header.ts"
 for src in "$stage_dir"/*/; do
@@ -184,6 +202,7 @@ for src in "$stage_dir"/prompts-*; do
 	base=${src##*/}; replace_path "$src" "$AGENT_DIR/prompts/${base#prompts-}"
 done
 if [[ -f "$stage_dir/settings.json" ]]; then replace_path "$stage_dir/settings.json" "$AGENT_DIR/settings.json"; fi
+if [[ -f "$stage_dir/permissions.json" ]]; then replace_path "$stage_dir/permissions.json" "$AGENT_DIR/permissions.json"; fi
 
 node - "$backup_dir" "$backup_list" <<'NODE'
 const fs = require("fs");

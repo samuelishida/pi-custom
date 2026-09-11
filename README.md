@@ -39,14 +39,16 @@ also works when your `~/.local/bin/pi-custom` symlink is on `PATH`.
 ### YOLO mode (muselinn permission chain)
 
 `pi-muselinn-harness` ships an 18-level policy chain with three operational
-modes: `auto`, `yolo`, `manual`. Sessions start in `manual` unless configured.
+modes: `auto`, `yolo`, `manual`. The pre-install script sets **`yolo` as the
+default startup mode** by writing `defaultMode: "yolo"` to
+`~/.pi/agent/permissions.json`.
 
 - **Switch for the current session:** `/mode yolo`
-- **Persist as the startup mode** for fresh sessions:
+- **Change the startup mode** for fresh sessions:
 
   ```json
   {
-    "defaultMode": "yolo"
+    "defaultMode": "auto"
   }
   ```
 
