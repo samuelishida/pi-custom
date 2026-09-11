@@ -4,9 +4,10 @@ Tool-agnostic `autoresearch` and `deep-research` skills plus `researcher`,
 `verifier`, and `reviewer` agents, adapted from Feynman's research workflows.
 
 The skills and agents are **tool-agnostic**: they work in Claude Code, Codex,
-pi, and any agent that reads the [Agent Skills](https://agentskills.io) open
-standard. They never assume a specific tool name exists — they map to whatever
-search, fetch, shell, and subagent tools the host agent exposes.
+pi, Cline, Roo Code, Windsurf, Cursor, Copilot, and any agent that reads the
+[Agent Skills](https://agentskills.io) open standard. They never assume a
+specific tool name exists — they map to whatever search, fetch, shell, and
+subagent tools the host agent exposes.
 
 ---
 
@@ -30,17 +31,24 @@ npm install -g research-skills
 research-install --all
 ```
 
-`--all` installs into every agent it finds. To target a specific agent:
+`--all` installs into every supported tool it finds on disk. To target a
+specific tool:
 
 ```bash
-research-install --claude   # ~/.claude
-research-install --codex    # ~/.codex
-research-install --pi       # ~/.pi/agent
+research-install --claude     # ~/.claude
+research-install --codex      # ~/.codex
+research-install --pi         # ~/.pi/agent
+research-install --cline      # ~/.cline
+research-install --roo        # ~/.roo
+research-install --windsurf   # ~/.codeium/windsurf
+research-install --cursor     # ~/.cursor
+research-install --copilot    # ~/.github/prompts
 ```
 
-The installer copies each skill into the agent's `skills/` directory and each
-agent into the agent's `agents/` directory. It is idempotent: re-running it
-overwrites with a `.bak-<timestamp>` backup of any existing file.
+The installer copies each skill into the tool's `skills/` directory and each
+agent into the tool's `agents/` directory (tools that read agents). It is
+idempotent: re-running it overwrites with a `.bak-<timestamp>` backup of any
+existing file.
 
 Preview what would be copied without touching anything:
 
@@ -132,6 +140,9 @@ Invoke the skills by name in your agent:
 - **Claude Code:** `/autoresearch <idea>`, `/deep-research <topic>`
 - **Codex:** `@autoresearch <idea>`, `@deep-research <topic>`
 - **pi:** `/autoresearch <idea>`, `/deepresearch <topic>`
+- **Cline / Roo Code / Windsurf / Cursor / Copilot:** invoke the skill by name
+  (`/autoresearch <idea>`, `/deep-research <topic>`) or trigger it with a plain
+  language request — the host agent loads the matching skill automatically.
 
 You can also just ask in plain language — the host agent loads the matching
 skill automatically, e.g. "run a deep research investigation on X" or "optimize

@@ -2,50 +2,96 @@
 "use strict";
 
 // research-skills installer
-// Copies tool-agnostic skills and agents into Claude Code, Codex, or pi.
+// Copies tool-agnostic skills and agents into supported AI coding tools:
+// Claude Code, Codex, pi, Cline, Roo Code, Windsurf, Cursor, and Copilot.
 //
 // Usage:
-//   research-install                 # auto-detect or install to all
-//   research-install --claude        # install to ~/.claude
-//   research-install --codex         # install to ~/.codex
-//   research-install --pi            # install to ~/.pi/agent
-//   research-install --all           # install to all three
-//   research-install --dry-run       # show what would be copied
-//   research-install --uninstall     # remove installed files
+//   research-install                  # auto-detect or install to all found
+//   research-install --claude         # install to ~/.claude
+//   research-install --codex          # install to ~/.codex
+//   research-install --pi             # install to ~/.pi/agent
+//   research-install --cline          # install to ~/.cline
+//   research-install --roo            # install to ~/.roo
+//   research-install --windsurf       # install to ~/.codeium/windsurf
+//   research-install --cursor         # install to ~/.cursor
+//   research-install --copilot        # install to ~/.github/prompts
+//   research-install --all            # install to all supported tools
+//   research-install --dry-run        # show what would be copied
+//   research-install --uninstall      # remove installed files
 
 const fs = require("fs");
 const path = require("path");
 const os = require("os");
 
 const PKG_ROOT = path.resolve(__dirname, "..");
+const HOME = os.homedir();
 
-// Target agent layouts. Each maps a source dir to a destination dir.
+const piHome = process.env.PI_CODING_AGENT_DIR || process.env.PI_AGENT_DIR || path.join(HOME, ".pi", "agent");
+
+// Target tool layouts. Some tools read skills from a skills/ dir; others only
+// support flat markdown. "agents" is null when the tool does not use agent
+// files (or does not read them from that location), so agents are skipped.
 const TARGETS = {
   claude: {
     label: "Claude Code",
-    home: path.join(os.homedir(), ".claude"),
-    skills: path.join(os.homedir(), ".claude", "skills"),
-    agents: path.join(os.homedir(), ".claude", "agents"),
+    home: path.join(HOME, ".claude"),
+    skills: path.join(HOME, ".claude", "skills"),
+    agents: path.join(HOME, ".claude", "agents"),
+    autoDetectHome: path.join(HOME, ".claude"),
   },
   codex: {
     label: "Codex",
-    home: path.join(os.homedir(), ".codex"),
-    skills: path.join(os.homedir(), ".codex", "skills"),
-    agents: path.join(os.homedir(), ".codex", "agents"),
+    home: path.join(HOME, ".codex"),
+    skills: path.join(HOME, ".codex", "skills"),
+    agents: path.join(HOME, ".codex", "agents"),
+    autoDetectHome: path.join(HOME, ".codex"),
   },
   pi: {
     label: "pi",
-    home: process.env.PI_CODING_AGENT_DIR || process.env.PI_AGENT_DIR || path.join(os.homedir(), ".pi", "agent"),
-    skills: path.join(
-      process.env.PI_CODING_AGENT_DIR || process.env.PI_AGENT_DIR || path.join(os.homedir(), ".pi", "agent"),
-      "skills"
-    ),
-    agents: path.join(
-      process.env.PI_CODING_AGENT_DIR || process.env.PI_AGENT_DIR || path.join(os.homedir(), ".pi", "agent"),
-      "agents"
-    ),
+    home: piHome,
+    skills: path.join(piHome, "skills"),
+    agents: path.join(piHome, "agents"),
+    autoDetectHome: piHome,
+  },
+  cline: {
+    label: "Cline",
+    home: path.join(HOME, ".cline"),
+    skills: path.join(HOME, ".cline", "skills"),
+    agents: null,
+    autoDetectHome: path.join(HOME, ".cline"),
+  },
+  roo: {
+    label: "Roo Code",
+    home: path.join(HOME, ".roo"),
+    skills: path.join(HOME, ".roo", "skills"),
+    agents: null,
+    autoDetectHome: path.join(HOME, ".roo"),
+  },
+  windsurf: {
+    label: "Windsurf",
+    home: path.join(HOME, ".codeium", "windsurf"),
+    skills: path.join(HOME, ".codeium", "windsurf", "skills"),
+    agents: null,
+    autoDetectHome: path.join(HOME, ".codeium", "windsurf"),
+  },
+  cursor: {
+    label: "Cursor",
+    home: path.join(HOME, ".cursor"),
+    skills: path.join(HOME, ".cursor", "skills"),
+    agents: path.join(HOME, ".cursor", "agents"),
+    autoDetectHome: path.join(HOME, ".cursor"),
+  },
+  copilot: {
+    label: "Copilot",
+    home: path.join(HOME, ".github", "prompts"),
+    skills: path.join(HOME, ".github", "prompts"),
+    agents: null,
+    autoDetectHome: path.join(HOME, ".github", "prompts"),
   },
 };
+
+// Ordered list of tool keys used for --all and auto-detect.
+const TOOL_ORDER = Object.keys(TARGETS);
 
 const SKILLS = ["autoresearch", "deep-research"];
 const AGENTS = ["researcher", "verifier", "reviewer"];
@@ -94,21 +140,23 @@ function installTarget(name, dryRun) {
     copied++;
   }
 
-  for (const agent of AGENTS) {
-    const src = path.join(PKG_ROOT, "agents", agent + ".md");
-    const dest = path.join(t.agents, agent + ".md");
-    if (!fs.existsSync(src)) {
-      warn(`missing source ${src}`);
-      continue;
+  if (t.agents) {
+    for (const agent of AGENTS) {
+      const src = path.join(PKG_ROOT, "agents", agent + ".md");
+      const dest = path.join(t.agents, agent + ".md");
+      if (!fs.existsSync(src)) {
+        warn(`missing source ${src}`);
+        continue;
+      }
+      if (dryRun) {
+        log(`  would copy agent ${agent} -> ${dest}`);
+      } else {
+        backupExisting(dest);
+        copyFile(src, dest);
+        log(`  agent ${agent} -> ${dest}`);
+      }
+      copied++;
     }
-    if (dryRun) {
-      log(`  would copy agent ${agent} -> ${dest}`);
-    } else {
-      backupExisting(dest);
-      copyFile(src, dest);
-      log(`  agent ${agent} -> ${dest}`);
-    }
-    copied++;
   }
 
   return copied;
@@ -126,11 +174,13 @@ function uninstallTarget(name) {
       log(`  removed skill ${skill}`);
     }
   }
-  for (const agent of AGENTS) {
-    const dest = path.join(t.agents, agent + ".md");
-    if (fs.existsSync(dest)) {
-      fs.rmSync(dest, { force: true });
-      log(`  removed agent ${agent}`);
+  if (t.agents) {
+    for (const agent of AGENTS) {
+      const dest = path.join(t.agents, agent + ".md");
+      if (fs.existsSync(dest)) {
+        fs.rmSync(dest, { force: true });
+        log(`  removed agent ${agent}`);
+      }
     }
   }
 }
@@ -141,18 +191,18 @@ function main() {
   const uninstall = args.includes("--uninstall");
 
   const requested = [];
-  if (args.includes("--claude")) requested.push("claude");
-  if (args.includes("--codex")) requested.push("codex");
-  if (args.includes("--pi")) requested.push("pi");
-  if (args.includes("--all")) requested.push("claude", "codex", "pi");
+  for (const key of TOOL_ORDER) {
+    if (args.includes("--" + key)) requested.push(key);
+  }
+  if (args.includes("--all")) requested.push(...TOOL_ORDER);
 
   // Auto-detect: install to whichever target dirs exist.
   const targets = requested.length
     ? requested
-    : Object.keys(TARGETS).filter((k) => fs.existsSync(TARGETS[k].home));
+    : TOOL_ORDER.filter((k) => fs.existsSync(TARGETS[k].autoDetectHome));
 
   if (!targets.length) {
-    log("No target agent directories found. Use --claude, --codex, --pi, or --all.");
+    log("No supported tool directories found. Use --claude, --codex, --pi, --cline, --roo, --windsurf, --cursor, --copilot, or --all.");
     process.exit(1);
   }
 
