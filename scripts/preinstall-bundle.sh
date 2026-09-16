@@ -67,7 +67,6 @@ guardrail_bytes=$(manifest_value sources.guardrail.bytes)
 for item in \
 	"pi-undo-redo|bundled/npm-packages/pi-undo-redo-0.1.1.tgz|sources.npm.pi-undo-redo.sha256" \
 	"pi-dictate|bundled/npm-packages/pi-dictate-1.0.6.tgz|sources.npm.pi-dictate.sha256" \
-	"pi-observational-memory|bundled/npm-packages/pi-observational-memory-3.0.4.tgz|sources.npm.pi-observational-memory.sha256" \
 	"pi-mcp-adapter|bundled/npm-packages/pi-mcp-adapter-2.32.1.tgz|sources.npm.pi-mcp-adapter.sha256" \
 	"pi-hermes-memory|bundled/npm-packages/pi-hermes-memory-0.9.8.tgz|sources.npm.pi-hermes-memory.sha256" \
 	"pi-background-tasks|bundled/npm-packages/pi-background-tasks-2.5.0.tgz|sources.npm.pi-background-tasks.sha256" \
@@ -143,7 +142,7 @@ done
 for src in "$ROOT_DIR"/bundled/agents/*.md; do cp -a "$src" "$stage_dir/agents-$(basename "$src")"; done
 for src in "$ROOT_DIR"/bundled/prompts/*.md; do cp -a "$src" "$stage_dir/prompts-$(basename "$src")"; done
 
-for name in browser web-fetch pi-undo-redo pi-dictate pi-observational-memory pi-interactive-subagents pi-diff pi-mcp-adapter pi-hermes-memory pi-background-tasks pi-muselinn-harness; do
+for name in browser web-fetch pi-undo-redo pi-dictate pi-interactive-subagents pi-diff pi-mcp-adapter pi-hermes-memory pi-background-tasks pi-muselinn-harness; do
 	if [[ -f "$stage_dir/$name/package-lock.json" ]]; then
 		(cd "$stage_dir/$name" && npm ci --omit=dev --ignore-scripts --offline --cache "$ROOT_DIR/bundled/npm-cache" > "$ROOT_DIR/.preinstall-$name.log" 2>&1) || {
 			echo "offline dependency install failed: $name (see .preinstall-$name.log)" >&2

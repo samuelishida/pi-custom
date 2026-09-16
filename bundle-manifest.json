@@ -55,11 +55,6 @@
         "integrity": "sha512-HXeYcgFgrgiW5rwn4gwxRQrqCh7GFTfkjwWsyoIuQcfJ78ZULOiI8VxgzdK9d0b/9IBw62HKBnbuPLa2Ua1j0A==",
         "sha256": "cfff5b66a9f3f8e9f3172ca32a0b81d76b8daaa69875a9ee09c684fb32c6211e"
       },
-      "pi-observational-memory": {
-        "version": "3.0.4",
-        "integrity": "sha512-nxuhNbZf99YbGfhDX25Nl7BjPOY8H9Z2holhDsYZiI5jgsOgGSvwKssaTqNxwYZmR8c8l1g7/eNr9O96mbDpmg==",
-        "sha256": "af2741c6d65f3d6873ed05d0458ecad689b01a16600fdf1a650ba301b47d7756"
-      },
       "pi-mcp-adapter": {
         "version": "2.32.1",
         "integrity": "sha512-GNLYa2U9T5ZqIhZmhx/RTenEjfakJTelq/z6Q+At5SIxyuYvrvobriDEVsnx+lqetVDizUCudTWLfdZytQu0rg==",
@@ -123,7 +118,7 @@
     }
   },
   "bundled": {
-    "extensionsTreeSha256": "a2995b7b5dd0e63b1ab987ab0c48992a38c16dc2b279da281e566c49b4792949",
+    "extensionsTreeSha256": "77e85224e433ec0623e2997e694bd8aecc8cac4a85a89cebf61136e2ff77f9b2",
     "agentsTreeSha256": "7ee1af58b8b8974f29a9bbbcfa589a14c1dd712ccbab607eca4b6e566545678e",
     "npmCacheTreeSha256": "59b8f105e2588a803c5ea5edeada2e2b7eb02f234b03b207203108502b3e5238"
   },

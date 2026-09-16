@@ -5,9 +5,9 @@ prompt templates. Pi core remains unmodified.
 
 ## What is bundled
 
-- 15 extensions: guardrail, custom-header, prompt-snippets,
+- 14 extensions: guardrail, custom-header, prompt-snippets,
   browser, web-fetch, web-search, pi-undo-redo, pi-dictate,
-  pi-observational-memory, pi-interactive-subagents, pi-diff, pi-mcp-adapter,
+  pi-interactive-subagents, pi-diff, pi-mcp-adapter,
   pi-hermes-memory, pi-background-tasks, and pi-muselinn-harness.
 - 19 skills: 17 hawk-skills-md skills plus Feynman's `autoresearch` and
   `deep-research` skills.

@@ -23,7 +23,7 @@ const { DefaultResourceLoader, getAgentDir } = await import(`${process.env.ROOT_
 const expectedExtensions = [
 	"browser/index.ts", "custom-header.ts",
 	"guardrail.ts", "pi-dictate/src/index.ts", "pi-interactive-subagents/pi-extension/subagents/index.ts",
-	"pi-observational-memory/src/index.ts", "pi-undo-redo/src/extension.ts", "prompt-snippets/index.ts",
+	"pi-undo-redo/src/extension.ts", "prompt-snippets/index.ts",
 	"pi-diff/dist/index.js", "web-fetch/index.ts", "web-search/index.ts",
 	"pi-mcp-adapter/index.ts", "pi-hermes-memory/src/index.ts",
 	"pi-background-tasks/extensions/background-tasks.ts", "pi-muselinn-harness/index.ts",
