@@ -234,11 +234,10 @@ Auto permission mode is no longer active. Tool approvals and permission checks a
       case 'yolo':
         return `## Permission Mode: YOLO
 
-YOLO permission mode is active. Actions are unconditionally allowed, but destructive operations, sensitive file access, and .git control paths still require approval.
+YOLO permission mode is active — true yolo. No tool call can wait on the user. Every call is approved automatically, including destructive commands, sensitive file access, and .git control paths, and exit_plan_mode skips the plan review panel.
   - You CAN call AskUserQuestion for clarifications — it is NOT disabled in YOLO mode.
-  - Safety checks (destructive commands, sensitive files, git control paths) still run before auto-approval.
-  - ExitPlanMode still shows the plan review panel — the user needs to approve the plan before execution.
-  - This is "trust but verify": fast execution with guards for dangerous operations.`;
+  - Nothing verifies your work: irreversible actions execute immediately. Prefer reversible steps when they cost the same, and report exactly what you changed.
+  - Only fail-fast rules still stop you — they return a denial reason instead of prompting, so read it and adapt: permissions.json \`deny\` rules, tool-policy disabling, and an AGENTS.md \`destructive-ask-always\` directive.`;
       default:
         return undefined;
     }

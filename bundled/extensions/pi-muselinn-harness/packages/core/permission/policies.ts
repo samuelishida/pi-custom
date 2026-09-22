@@ -103,9 +103,13 @@ export const policy04UserDeny: Policy = {
 
 // ── 04b: destructive-command-ask ────────────────────────────────────────
 // 破坏性命令（rm -rf / --force / git push --force / drop table / truncate /
-// git reset --hard / git clean -fd，以及写敏感文件）始终 ask，且每次都要
-// 重新裁定，不被 sessionApprovals 短路。必须排在 auto-approve / yolo-approve /
-// session-history 之前，保证破坏性命令永远无法被静默批准。
+// git reset --hard / git clean -fd，以及写敏感文件）在 auto/manual 下每次都要
+// 重新裁定，不被 sessionApprovals 短路。必须排在 auto-approve / session-history
+// 之前，保证破坏性命令无法被静默批准。
+//
+// True YOLO: yolo 模式完全退出这条内建护栏 —— approve 裁决由 yolo-mode-approve
+// (#14) 给出，破坏性操作不再弹窗。AGENTS.md 的 `destructive-ask-always` 是用户
+// 自己写下的策略而非内建护栏，因此在任何模式下依然生效。
 export const policy04bDestructiveAsk: Policy = {
   id: 41,
   name: 'destructive-command-ask',
@@ -118,6 +122,8 @@ export const policy04bDestructiveAsk: Policy = {
         reason: 'AGENTS.md directive "destructive-ask-always" forbids destructive actions',
       };
     }
+    // True YOLO: destructive operations are approved without any dialog.
+    if (ctx.mode === 'yolo') return null;
     return {
       kind: 'ask',
       message: `Destructive action detected (${ctx.toolName}).\n\nThis operation is irreversible or touches sensitive data and requires explicit approval every time. Allow?`,
@@ -126,7 +132,7 @@ export const policy04bDestructiveAsk: Policy = {
 };
 
 // ── 05: auto-mode-approve ───────────────────────────────────────────────
-// auto 模式：批准一切（短路，但在敏感文件/破坏性守卫之后）
+// auto 模式：批准一切（短路；因此在 auto 下破坏性/敏感文件/.git 护栏不会执行）
 export const policy05AutoApprove: Policy = {
   id: 5,
   name: 'auto-mode-approve',
@@ -158,11 +164,16 @@ export const policy06SessionHistory: Policy = {
 };
 
 // ── 07: user-configured-ask ─────────────────────────────────────────────
-// 用户自定义 ask 规则
+// 用户自定义 ask 规则。True YOLO 下不再询问：yolo 的契约就是"不弹窗"，
+// 配置的 ask 规则在 yolo 下等同于预先回答"允许"。deny 规则照旧拦截（快速失败，
+// 不是等待输入），所以不会静默放过用户明确禁止的操作。
 export const policy07UserAsk: Policy = {
   id: 7,
   name: 'user-configured-ask',
   evaluate(ctx: PolicyContext): PolicyResult | null {
+    // True YOLO: a prompt here would stall an unattended run. deny still blocks.
+    if (ctx.mode === 'yolo') return null;
+
     const config = loadUserConfig(ctx.cwd);
     for (const pattern of config.ask) {
       if (matchesPattern(pattern, ctx.toolName, ctx.input, ctx.cwd)) {
@@ -232,13 +243,16 @@ export const policy11PlanToolApprove: Policy = {
 };
 
 // ── 12: sensitive-file-access-ask ───────────────────────────────────────
-// 敏感文件路径（.env 等）
+// 敏感文件路径（.env 等）。True YOLO 下不再询问。
 export const policy12SensitiveFile: Policy = {
   id: 12,
   name: 'sensitive-file-access-ask',
   evaluate(ctx: PolicyContext): PolicyResult | null {
     if (ctx.toolName !== 'write' && ctx.toolName !== 'edit' && ctx.toolName !== 'bash' && ctx.toolName !== 'read') return null;
-    
+
+    // True YOLO: no sensitive-file dialog.
+    if (ctx.mode === 'yolo') return null;
+
     const filePath = (ctx.input.path as string) || (ctx.input.file_path as string) || '';
     if (!filePath) return null;
     const resolved = path.resolve(ctx.cwd, filePath);
@@ -256,13 +270,16 @@ export const policy12SensitiveFile: Policy = {
 };
 
 // ── 13: git-control-path-access-ask ─────────────────────────────────────
-// .git 目录访问
+// .git 目录访问。True YOLO 下不再询问。
 export const policy13GitControl: Policy = {
   id: 13,
   name: 'git-control-path-access-ask',
   evaluate(ctx: PolicyContext): PolicyResult | null {
     if (ctx.toolName !== 'write' && ctx.toolName !== 'edit' && ctx.toolName !== 'bash') return null;
-    
+
+    // True YOLO: no .git dialog.
+    if (ctx.mode === 'yolo') return null;
+
     const filePath = (ctx.input.path as string) || (ctx.input.file_path as string) || '';
     if (!filePath) return null;
     const resolved = path.resolve(ctx.cwd, filePath);
@@ -280,13 +297,16 @@ export const policy13GitControl: Policy = {
 };
 
 // ── 14: yolo-mode-approve ───────────────────────────────────────────────
-// yolo 模式：批准（在安全检查之后）
+// yolo 模式：批准一切。True yolo —— 内建安全护栏（破坏性命令、敏感文件、
+// .git 路径）在 yolo 下直接让路，因此这里就是最终裁决。
+// 仍然优先于它的只有显式用户策略：permissions.json 的 deny/ask 规则、
+// tool policy 禁用，以及 AGENTS.md 的 destructive-ask-always。
 export const policy14YoloApprove: Policy = {
   id: 14,
   name: 'yolo-mode-approve',
   evaluate(ctx: PolicyContext): PolicyResult | null {
     if (ctx.mode === 'yolo') {
-      return { kind: 'approve', reason: 'Yolo mode: approved (after safety checks)' };
+      return { kind: 'approve', reason: 'Yolo mode: true yolo, approved unconditionally' };
     }
     return null;
   },
@@ -354,9 +374,15 @@ export const policy18FallbackAsk: Policy = {
 //             so auto mode is truly automatic — no dialogs. User-configured
 //             deny rules are still respected.
 //
-// YOLO mode:  Safety checks (destructive, sensitive file, .git control) run
-//             BEFORE YoloApprove (#15). So yolo still asks for dangerous ops
-//             but approves everything else. AskUserQuestion is allowed.
+// YOLO mode:  TRUE YOLO. Nothing in this chain can produce an `ask` verdict,
+//             so no tool call can ever wait on a human. The safety policies
+//             (#41 destructive, #12 sensitive file, #13 .git control) and the
+//             user ask rules (#7) opt out when mode === 'yolo', leaving
+//             YoloApprove (#14) to approve every call.
+//             AskUserQuestion is allowed (unlike auto).
+//             Only fail-fast verdicts survive: permissions.json `deny` rules,
+//             tool-policy disabling, and the AGENTS.md `destructive-ask-always`
+//             directive all still block loudly instead of stalling.
 //
 // MANUAL mode: Runs through the entire chain; fallback-ask catches anything
 //              not explicitly allowed or denied.
@@ -367,7 +393,7 @@ export const policyChain: Policy[] = [
   policy04UserDeny,
   // AutoApprove fires early — auto mode is fully automatic
   policy05AutoApprove,
-  // Safety checks (only effective in non-auto modes)
+  // Safety checks — skipped entirely in yolo mode (true yolo)
   policy04bDestructiveAsk,
   policy12SensitiveFile,
   policy13GitControl,
@@ -378,7 +404,7 @@ export const policyChain: Policy[] = [
   policy09ExitPlanReview,
   policy10GoalStartReview,
   policy11PlanToolApprove,
-  // YoloApprove fires after safety checks — yolo still protects dangerous ops
+  // YoloApprove is now the final verdict for yolo mode
   policy14YoloApprove,
   policy15SwarmApprove,
   policy16DefaultApprove,

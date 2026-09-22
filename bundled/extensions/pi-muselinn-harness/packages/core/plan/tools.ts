@@ -55,9 +55,9 @@ export function registerPlanTools(pi: any, planManager: PlanManager): void {
     label: "Exit Plan Mode",
     promptSnippet: "exit_plan_mode: submit plan for review with optional alternative approaches",
     promptGuidelines: [
-      "Use exit_plan_mode when your plan is ready for user review",
+      "Use exit_plan_mode when your plan is ready",
       "Make sure you've written the plan to a file before calling this",
-      "The plan will be reviewed by the user before execution",
+      "In manual mode the plan is reviewed by the user before execution; auto and yolo modes approve it instantly without review",
       "You can provide 1-3 alternative approaches via the options parameter",
       "Each option needs a label (max 80 chars) and description",
       "Append '(Recommended)' to the label of your recommended option",
@@ -124,13 +124,16 @@ export function registerPlanTools(pi: any, planManager: PlanManager): void {
         };
       };
 
-      // Kimi Code-style: auto mode skips approval entirely
-      if (permissionManager.getMode() === "auto") {
+      // Kimi Code-style: auto mode skips approval entirely.
+      // True YOLO also skips it: the review panel blocks on a human for up to
+      // 600 s, which would stall an unattended yolo run for ten minutes.
+      const permissionMode = permissionManager.getMode();
+      if (permissionMode === "auto" || permissionMode === "yolo") {
         planManager.approvePlan();
         clearPlanBadge();
-        ctx.ui.notify("Plan auto-approved (auto mode).", "success");
+        ctx.ui.notify(`Plan auto-approved (${permissionMode} mode).`, "success");
         return {
-          content: [{ type: "text", text: `Plan auto-approved. All tools are now available.\nNote: this plan was auto-approved without user review — the user has NOT explicitly approved it. Follow the user's original instructions on whether to proceed, but do NOT start editing source files unless the user's request explicitly asked for code changes.\n\nExecute the plan when the user confirms.` }],
+          content: [{ type: "text", text: `Plan auto-approved (${permissionMode} mode). All tools are now available.\nNote: this plan was auto-approved without user review — the user has NOT explicitly approved it. Follow the user's original instructions on whether to proceed, but do NOT start editing source files unless the user's request explicitly asked for code changes.\n\nExecute the plan when the user confirms.` }],
         };
       }
 

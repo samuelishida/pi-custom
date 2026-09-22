@@ -31,7 +31,7 @@ export function registerPermissionCommands(pi: any, permissionManager: Permissio
         if (mode === 'auto' || mode === 'yolo') {
           const confirmed = await ctx.ui.confirm(
             "Mode Switch",
-            `Switch to ${mode.toUpperCase()} mode?\n\n${mode === 'auto' ? 'All actions will be auto-approved. AskUserQuestion will be disabled.' : 'Actions will be approved after safety checks (sensitive files, .git still require approval).'}`,
+            `Switch to ${mode.toUpperCase()} mode?\n\n${mode === 'auto' ? 'All actions will be auto-approved. AskUserQuestion will be disabled.' : 'True yolo: every action is auto-approved with no dialogs, including destructive commands, sensitive files (.env, id_rsa, *.key) and .git paths.'}`,
           );
           if (!confirmed) {
             ctx.ui.notify("Mode switch cancelled.", "info");

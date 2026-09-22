@@ -164,7 +164,8 @@ export function parseAgentsMd(content: string): Record<string, string> {
 }
 
 /** Default permission mode — reads optional "defaultMode" from global or
- *  project permissions.json (first hit wins). Falls back to 'manual'. */
+ *  project permissions.json (first hit wins). Falls back to 'yolo', the
+ *  harness default: approvals are automatic, including destructive ops. */
 export function loadDefaultMode(): PermissionMode {
   const candidates = [
     path.join(process.env.HOME || process.env.USERPROFILE || '.', '.pi', 'agent', 'permissions.json'),
@@ -178,7 +179,7 @@ export function loadDefaultMode(): PermissionMode {
       }
     } catch { /* missing or invalid */ }
   }
-  return 'manual';
+  return 'yolo';
 }
 
 /**

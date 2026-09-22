@@ -20,7 +20,7 @@ as a single install:
 | Plan before execution | `enter_plan_mode` — read-only exploration, approval gate, Kimi Code permission model |
 | Stay on task | `/goal` — lifecycle, budgets, queue, completion-criterion gate |
 | Freeze & steer | `/pause` full-screen freeze · subagent transcripts · `/steer` runtime injection |
-| Safety rails | 18-level permission chain (`auto` / `yolo` / `manual`), destructive-command + `.env` guards |
+| Safety rails | 18-level permission chain (`auto` / `yolo` / `manual`), destructive-command + `.env` guards (skipped in true-yolo mode) |
 | Work that outlives the turn | `run_background` + `cron_create` — persistent tasks and scheduled prompts |
 | The agent asks properly | `ask_user_question` — tabbed multi-question dialog with previews |
 | Task tracking | `/todo` + `todo_list` — phased plan with inline panel and reminders |
@@ -116,15 +116,17 @@ tools are model-callable, all commands are slash commands with Tab completion.
 - **Context injection** — the plan is injected into the system prompt
 
 ### Permission
-- **18-level policy chain** — `auto` / `yolo` / `manual`; safety policies (destructive, sensitive files) short-circuit before modes
-- **Destructive detection** — `rm -rf` / `git push --force` / `drop table` / `git reset --hard` regex recognition, always asks, never short-circuited by session approvals
-- **Sensitive-file guard** — `.env` / `id_rsa` / `*.key` read/write interception, even in auto mode
+- **18-level policy chain** — `auto` / `yolo` / `manual`; explicit user policy (`permissions.json` deny/ask, tool policy) short-circuits before modes
+- **YOLO is true yolo, and the default** — nothing in the chain can produce an `ask`, so no tool call ever waits on a human: destructive commands, sensitive files (`.env` / `id_rsa` / `*.key`), `.git` control paths and `exit_plan_mode`'s 600 s plan-review panel are all auto-approved. `AskUserQuestion` stays available. Fresh sessions start in `yolo` unless `defaultMode` says otherwise
+- **Destructive detection** — `rm -rf` / `git push --force` / `drop table` / `git reset --hard` regex recognition; asks in `manual`, never short-circuited by session approvals, approved with no dialog in `auto`/`yolo`
+- **Sensitive-file guard** — `.env` / `id_rsa` / `*.key` read/write interception; active in `manual`, skipped in `yolo` (and in `auto`, which approves at policy #5)
+- **Only fail-fast rules survive yolo** — a denial is returned immediately instead of prompting, so it never stalls a run: `permissions.json` `deny` always blocks, tool policy can disable a tool, and an AGENTS.md `destructive-ask-always` directive still denies destructive actions. A configured `ask` rule prompts in `manual` but is treated as pre-answered in `yolo`
 - **Session approval fingerprints** — approvals remembered per sessionId + input fingerprint, never degrading into "permanent allow"
 - **Approval panel** — numbered dialog with per-tool action titles ("Run this command?" / "Apply these edits?"), digit-key direct select, four outcomes: Allow once / Always allow (session) / Deny / Deny with reason (reason relayed to the model). In RPC hosts (obsidian-pi etc.) the same choices render over the extension UI protocol (`select` / `input` / `confirm`) instead of the TUI dialog — no more silent denials
 - **Subagent gating** — swarm worker tool calls run through the same policy chain (shared in-process manager): `/mode` switches propagate to in-flight subagents by construction, `ask` verdicts degrade to blocks (never silent approval)
-- **AGENTS.md hierarchy** — project (nearest `AGENTS.md` or `.kimi-code/AGENTS.md`) → global `$KIMI_CODE_HOME/AGENTS.md` → cross-tool `~/.agents/AGENTS.md`, aggregated; `destructive-ask-always` can upgrade ask to deny
+- **AGENTS.md hierarchy** — project (nearest `AGENTS.md` or `.kimi-code/AGENTS.md`) → global `$KIMI_CODE_HOME/AGENTS.md` → cross-tool `~/.agents/AGENTS.md`, aggregated; `destructive-ask-always` upgrades ask to deny and stays in force even in `yolo`
 - **Config cache** — permission config cached by file mtime, edits take effect immediately
-- **Persistent startup mode** — optional `"defaultMode": "auto" | "yolo" | "manual"` in `~/.pi/agent/permissions.json` (global) or `.pi/permissions.json` (project; global wins on conflict) replaces the hardcoded `manual` startup mode, so new sessions start in your preferred mode without an interactive `/mode` call. A session with a recorded `/mode` history still restores the last used mode; `defaultMode` is the starting point for fresh sessions.
+- **Persistent startup mode** — optional `"defaultMode": "auto" | "yolo" | "manual"` in `~/.pi/agent/permissions.json` (global) or `.pi/permissions.json` (project; global wins on conflict). Defaults to `yolo` when unset. A session with a recorded `/mode` history still restores the last used mode; `defaultMode` is the starting point for fresh sessions.
 
 ### Task (background + cron)
 - **run_background** — subagent in the background, immediate task ID; `output_path` pages full output via Read
@@ -360,7 +362,7 @@ Design and implementation inspired by these open-source projects:
 - Agent Swarm concurrency architecture (max_concurrency worker pool, 30-min timeout, run_in_background)
 - Goal system design (GoalActor tracking, Budget Report, blocked 3-turn threshold, context injection)
 - Plan-mode lifecycle (enter/exit/approve/reject, ExitPlanMode disk read)
-- Permission policy chain (auto/yolo/manual, destructive-always-ask, AGENTS.md priority)
+- Permission policy chain (auto/yolo/manual, destructive-detection, AGENTS.md priority)
 - Cron scheduling (5-field + jitter + 7-day stale + 50 cap)
 - TUI component design (braille progress bars, three-pane task browser, `wrapWithSideBorders` closed-box editor)
 - Cancel/resume mechanism (AbortSignal chain, UserCancellationError)

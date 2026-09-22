@@ -194,7 +194,7 @@ export function tuiArgumentCompletions(prefix: string): CompletionItem[] | null 
 
 const MODE_SUBCOMMANDS: CompletionItem[] = [
   { value: "auto", label: "auto", description: "Auto-approve all (disable ask_user_question)" },
-  { value: "yolo", label: "yolo", description: "Approve after safety checks" },
+  { value: "yolo", label: "yolo", description: "Auto-approve everything, including destructive ops" },
   { value: "manual", label: "manual", description: "Require approval for all actions" },
   { value: "status", label: "status", description: "Show current mode" },
 ];

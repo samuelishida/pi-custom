@@ -405,8 +405,8 @@ export class PlanManager {
    *
    * Wording is aligned with Kimi Code's plan-mode injection
    * (packages/agent-core/src/agent/injection/plan-mode.ts):
-   * - Edits are restricted to the current plan file unless a tool request
-   *   is explicitly approved.
+   * - Edits are restricted to the current plan file; only the plan file is
+   *   writable in plan mode.
    * - Bash is NOT banned — it follows the normal permission mode and rules.
    * - TaskStop, CronCreate, CronDelete are blocked in plan mode.
    * - Turns must end with ask_user_question or exit_plan_mode.
@@ -423,7 +423,7 @@ export class PlanManager {
       return [
         `## Plan Mode Active`,
         ``,
-        `Plan mode still active (see full instructions earlier). Prefer read-only tools except the current plan file. Use write or edit to modify the plan file; if it does not exist yet, create it with write first. Use Bash only when needed; Bash follows the normal permission mode and rules. Use ask_user_question to clarify user preferences when it helps you write a better plan. If the plan has multiple approaches, pass options to exit_plan_mode so the user can choose. End turns with ask_user_question (for clarifications) or exit_plan_mode (for approval). Never ask about plan approval via text or ask_user_question.`,
+        `Plan mode still active (see full instructions earlier). Prefer read-only tools except the current plan file. Use write or edit to modify the plan file; if it does not exist yet, create it with write first. Use Bash only when needed; Bash follows the normal permission mode and rules. Use ask_user_question to clarify user preferences when it helps you write a better plan. If the plan has multiple approaches, pass options to exit_plan_mode so the user can choose. End turns with ask_user_question (for clarifications) or exit_plan_mode. Never ask about plan approval via text or ask_user_question.`,
         ``,
         `Plan file: ${planPath}`,
       ].join('\n');
@@ -433,24 +433,24 @@ export class PlanManager {
     const parts = [
       `## Plan Mode Active`,
       ``,
-      `Plan mode is active. You MUST NOT make any edits (with the exception of the current plan file) or otherwise make changes to the system unless a tool request is explicitly approved. Prefer read-only tools. Use Bash only when needed; Bash follows the normal permission mode and rules. This supersedes any other instructions you have received. TaskStop, CronCreate, and CronDelete are also blocked in plan mode — call exit_plan_mode first if you need them.`,
+      `Plan mode is active. You MUST NOT make any edits (with the exception of the current plan file) or otherwise make changes to the system. Prefer read-only tools. Use Bash only when needed; Bash follows the normal permission mode and rules. This supersedes any other instructions you have received. TaskStop, CronCreate, and CronDelete are also blocked in plan mode - call exit_plan_mode first if you need them.`,
       ``,
       `Workflow:`,
       `  1. Understand — explore the codebase with read, grep, find, ls.`,
       `  2. Design — converge on the best approach; consider trade-offs but aim for a single recommendation.`,
       `  3. Review — re-read key files to verify understanding.`,
       `  4. Write Plan — modify the plan file with write or edit. Use write if the plan file does not exist yet.`,
-      `  5. Exit — call exit_plan_mode for user approval.`,
+      `  5. Exit — call exit_plan_mode. In manual mode this opens the approval panel; in auto and yolo modes the plan is approved automatically so the run never blocks on a human.`,
       ``,
       `## Handling multiple approaches`,
       `Keep it focused: at most 2-3 meaningfully different approaches. Do NOT pad with minor variations — if one approach is clearly superior, just propose that one.`,
       `When the best approach depends on user preferences, constraints, or context you don't have, use ask_user_question to clarify first. This helps you write a better, more targeted plan rather than dumping multiple options for the user to sort through.`,
-      `When you do include multiple approaches in the plan, you MUST pass them as the \`options\` parameter when calling exit_plan_mode, so the user can select which approach to execute at approval time.`,
-      `NEVER write multiple approaches in the plan and call exit_plan_mode without the \`options\` parameter — the user will only see the default approval controls with no way to choose a specific approach.`,
+      `When you do include multiple approaches in the plan, you MUST pass them as the \`options\` parameter when calling exit_plan_mode, so the user can select which approach to execute.`,
+      `NEVER write multiple approaches in the plan and call exit_plan_mode without the \`options\` parameter.`,
       ``,
       `ask_user_question is for clarifying missing requirements or user preferences that affect the plan.`,
       `Never ask about plan approval via text or ask_user_question.`,
-      `Your turn must end with either ask_user_question (to clarify requirements or preferences) or exit_plan_mode (to request plan approval). Do NOT end your turn any other way.`,
+      `Your turn must end with either ask_user_question (to clarify requirements or preferences) or exit_plan_mode. Do NOT end your turn any other way.`,
       ``,
       `Plan file: ${planPath}`,
     ];

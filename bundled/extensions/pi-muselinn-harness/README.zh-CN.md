@@ -19,7 +19,7 @@ harness 以 [Kimi Code](https://www.kimi.com/code) 的风格把它们一次性�
 | 先谋后动 | `enter_plan_mode` — 只读探索、审批门禁、Kimi Code 权限模型 |
 | 有始有终 | `/goal` — 生命周期、预算、队列、完成判据门禁 |
 | 冻结与转向 | `/pause` 全屏冻结 · 子代理 transcript 落盘 · `/steer` 运行中注入 |
-| 安全护栏 | 18 级权限链（`auto` / `yolo` / `manual`）、破坏性命令 + `.env` 守卫 |
+| 安全护栏 | 18 级权限链（`auto` / `yolo` / `manual`）、破坏性命令 + `.env` 守卫（true yolo 下跳过） |
 | 跨轮次的工作 | `run_background` + `cron_create` — 持久后台任务与定时提示 |
 | 好好提问 | `ask_user_question` — 标签页多题对话框，支持预览 |
 | 任务追踪 | `/todo` + `todo_list` — 分阶段计划、内联面板、自动提醒 |
@@ -96,9 +96,10 @@ pi                                      # 重启 pi，然后试试：
 - **Context 注入** — 注入 plan 到 system prompt
 
 ### Permission 模块
-- **18 级策略链** — auto / yolo / manual 三模式，安全策略（destructive、敏感文件）优先于模式短路
-- **Destructive 检测** — `rm -rf` / `git push --force` / `drop table` / `git reset --hard` 等正则识别，每次必问，不被会话批准短路
-- **敏感文件守卫** — `.env` / `id_rsa` / `*.key` 等读写拦截，auto 模式下也不放行
+- **18 级策略链** — auto / yolo / manual 三模式；yolo 为 true yolo，链上没有任何路径能产生 `ask`，破坏性命令 / 敏感文件 / `.git` 路径 / `exit_plan_mode` 的 600s 计划审批面板一律自动放行
+- **Destructive 检测** — `rm -rf` / `git push --force` / `drop table` / `git reset --hard` 等正则识别，manual 下每次必问、不被会话批准短路；auto / yolo 下不弹窗直接放行
+- **敏感文件守卫** — `.env` / `id_rsa` / `*.key` 等读写拦截；manual 下生效，yolo 下跳过（auto 同样在策略 #5 处先行放行）
+- **yolo 下只剩快速失败规则** — 立即返回拒绝理由而不是等待输入，因此不会卡住运行：`permissions.json` 的 `deny` 永远拦截，tool policy 可禁用工具，AGENTS.md 的 `destructive-ask-always` 依旧拒绝破坏性操作；配置的 `ask` 规则在 manual 下询问，在 yolo 下视为已预先回答
 - **会话批准指纹** — 按 sessionId + 输入指纹记忆批准，不蜕变为"永久许可"
 - **审批面板** — 编号对话框，按工具定制动作标题，数字键 1-9 直选，四种结果：Allow once / Always allow（本会话）/ Deny / Deny with reason（理由回传给模型）。在 RPC 宿主（obsidian-pi 等）中，同样的四个选择走扩展 UI 协议（`select` / `input` / `confirm`）呈现，不再静默拒绝
 - **子代理门控** — swarm worker 的工具调用经过同一策略链（进程内共享管理器）：`/mode` 切换天然传播到进行中的子代理，ask 判定降级为阻断（绝不静默放行）
@@ -340,7 +341,7 @@ node tests/stream-rules.test.mjs                  # 流式 entry 规则 14 项
 - Agent Swarm 并发执行架构（max_concurrency worker 池、30min 超时、run_in_background）
 - Goal 系统设计（GoalActor 追踪、Budget Report、blocked 3 轮阈值、Context 注入）
 - Plan Mode 生命周期（enter/exit/approve/reject、ExitPlanMode 读盘）
-- Permission 策略链（auto/yolo/manual、destructive 必问、AGENTS.md 优先级）
+- Permission 策略链（auto/yolo/manual、destructive 检测、AGENTS.md 优先级）
 - Cron 定时任务（5 字段 + jitter + 7 天 stale + 50 上限）
 - TUI 组件设计（盲文进度条、三栏任务浏览器、`wrapWithSideBorders` 闭合框编辑器）
 - 取消/恢复机制（AbortSignal 链、UserCancellationError）
