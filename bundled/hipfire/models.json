@@ -1,0 +1,434 @@
+{
+  "providers": {
+    "flashnext": {
+      "api": "openai-completions",
+      "apiKey": "flashnext",
+      "baseUrl": "http://127.0.0.1:11438/v1",
+      "models": [
+        {
+          "_launch": true,
+          "contextWindow": 192000,
+          "id": "qwen3.8-flash-next",
+          "input": [
+            "text"
+          ],
+          "reasoning": true,
+          "thinkingLevelMap": {
+            "high": "medium",
+            "low": "low",
+            "max": "medium",
+            "medium": "medium",
+            "minimal": "low",
+            "off": "low",
+            "xhigh": "medium"
+          }
+        }
+      ]
+    },
+    "hipfire": {
+      "api": "openai-completions",
+      "apiKey": "hipfire",
+      "baseUrl": "http://127.0.0.1:11435/v1",
+      "models": [
+        {
+          "_launch": true,
+          "contextWindow": 163840,
+          "id": "qwen3.8:27b-mq4-xt",
+          "input": [
+            "text"
+          ],
+          "maxTokens": 32768,
+          "reasoning": true,
+          "thinkingLevelMap": {
+            "high": "medium",
+            "low": "low",
+            "max": "medium",
+            "medium": "medium",
+            "minimal": "low",
+            "off": "low",
+            "xhigh": "medium"
+          }
+        }
+      ]
+    },
+    "memllm": {
+      "api": "openai-completions",
+      "apiKey": "ollama",
+      "baseUrl": "http://127.0.0.1:11434/v1",
+      "models": [
+        {
+          "contextWindow": 1048576,
+          "id": "deepseek-v4.1-flash:cloud",
+          "input": [
+            "text"
+          ],
+          "reasoning": true,
+          "thinkingLevelMap": {
+            "high": "high",
+            "low": "low",
+            "max": "max",
+            "medium": "medium",
+            "minimal": "minimal",
+            "off": "none",
+            "xhigh": "xhigh"
+          }
+        }
+      ]
+    },
+    "ollama": {
+      "api": "openai-completions",
+      "apiKey": "ollama",
+      "baseUrl": "http://127.0.0.1:11434/v1",
+      "models": [
+        {
+          "_launch": true,
+          "contextWindow": 163840,
+          "id": "smtek/BigBang-v1:latest",
+          "input": [
+            "text"
+          ],
+          "reasoning": true,
+          "thinkingLevelMap": {
+            "high": "",
+            "low": "",
+            "max": "",
+            "medium": "",
+            "minimal": "",
+            "off": "",
+            "xhigh": ""
+          }
+        },
+        {
+          "_launch": true,
+          "contextWindow": 122880,
+          "id": "smtek/Qwen3.8-27B:Q4_K_XL",
+          "input": [
+            "text",
+            "image"
+          ],
+          "reasoning": true,
+          "thinkingLevelMap": {
+            "high": "",
+            "low": "low",
+            "max": "",
+            "medium": "medium",
+            "minimal": "low",
+            "off": "low",
+            "xhigh": ""
+          }
+        },
+        {
+          "_launch": true,
+          "contextWindow": 1048576,
+          "id": "deepseek-v4-flash:0731-cloud",
+          "input": [
+            "text"
+          ],
+          "reasoning": true
+        },
+        {
+          "_launch": true,
+          "contextWindow": 147456,
+          "id": "smtek/Qwen3.8-27B:latest",
+          "input": [
+            "text"
+          ],
+          "reasoning": true,
+          "thinkingLevelMap": {
+            "high": "",
+            "low": "low",
+            "max": "",
+            "medium": "medium",
+            "minimal": "low",
+            "off": "low",
+            "xhigh": ""
+          }
+        },
+        {
+          "_launch": true,
+          "contextWindow": 262144,
+          "id": "kimi-k2.7-code:cloud",
+          "input": [
+            "text",
+            "image"
+          ],
+          "reasoning": true,
+          "thinkingLevelMap": {
+            "high": "high",
+            "low": "low",
+            "max": "max",
+            "medium": "medium",
+            "minimal": "minimal",
+            "off": "low",
+            "xhigh": "xhigh"
+          }
+        },
+        {
+          "_launch": true,
+          "contextWindow": 131072,
+          "id": "smtek/ornith-1.5:35b",
+          "input": [
+            "text",
+            "image"
+          ],
+          "reasoning": true,
+          "thinkingLevelMap": {
+            "high": "",
+            "low": "",
+            "max": "",
+            "medium": "",
+            "minimal": "",
+            "off": "",
+            "xhigh": ""
+          }
+        },
+        {
+          "_launch": true,
+          "contextWindow": 1048576,
+          "id": "glm-5.3-flash:cloud",
+          "input": [
+            "text",
+            "image"
+          ],
+          "reasoning": true,
+          "thinkingLevelMap": {
+            "high": "high",
+            "low": "low",
+            "max": "max",
+            "medium": "medium",
+            "minimal": "minimal",
+            "off": "low",
+            "xhigh": "xhigh"
+          }
+        },
+        {
+          "_launch": true,
+          "contextWindow": 1000000,
+          "id": "glm-5.2:cloud",
+          "input": [
+            "text"
+          ],
+          "reasoning": true,
+          "thinkingLevelMap": {
+            "high": "high",
+            "low": "low",
+            "max": "max",
+            "medium": "medium",
+            "minimal": "minimal",
+            "off": "low",
+            "xhigh": "xhigh"
+          }
+        },
+        {
+          "_launch": true,
+          "contextWindow": 1048576,
+          "id": "glm-5.3:cloud",
+          "input": [
+            "text"
+          ],
+          "reasoning": true,
+          "thinkingLevelMap": {
+            "high": "high",
+            "low": "low",
+            "max": "max",
+            "medium": "medium",
+            "minimal": "minimal",
+            "off": "low",
+            "xhigh": "xhigh"
+          }
+        },
+        {
+          "_launch": true,
+          "contextWindow": 262144,
+          "id": "smtek/Qwen3.8-27B-AD:IQ4_XS",
+          "input": [
+            "text",
+            "image"
+          ],
+          "reasoning": true,
+          "thinkingLevelMap": {
+            "high": "",
+            "low": "low",
+            "max": "",
+            "medium": "medium",
+            "minimal": "low",
+            "off": "low",
+            "xhigh": ""
+          }
+        },
+        {
+          "_launch": true,
+          "contextWindow": 262144,
+          "id": "smtek/Swift-Qwen3.8-27B:latest",
+          "input": [
+            "text"
+          ],
+          "reasoning": true,
+          "thinkingLevelMap": {
+            "high": "",
+            "low": "low",
+            "max": "",
+            "medium": "medium",
+            "minimal": "low",
+            "off": "low",
+            "xhigh": ""
+          }
+        },
+        {
+          "_launch": true,
+          "contextWindow": 1048576,
+          "id": "deepseek-v4.1-flash:cloud",
+          "input": [
+            "text",
+            "image"
+          ],
+          "reasoning": true,
+          "thinkingLevelMap": {
+            "high": "high",
+            "low": "low",
+            "max": "max",
+            "medium": "medium",
+            "minimal": "minimal",
+            "off": "low",
+            "xhigh": "xhigh"
+          }
+        },
+        {
+          "_launch": true,
+          "contextWindow": 262144,
+          "id": "smtek/Swift-Qwen3.8-27B:dflash2",
+          "input": [
+            "text"
+          ],
+          "reasoning": true,
+          "thinkingLevelMap": {
+            "high": "",
+            "low": "low",
+            "max": "",
+            "medium": "medium",
+            "minimal": "low",
+            "off": "low",
+            "xhigh": ""
+          }
+        },
+        {
+          "_launch": true,
+          "contextWindow": 262144,
+          "id": "smtek/Swift-Qwen3.8-27B:map-k4v",
+          "input": [
+            "text"
+          ],
+          "reasoning": true,
+          "thinkingLevelMap": {
+            "high": "",
+            "low": "low",
+            "max": "",
+            "medium": "medium",
+            "minimal": "low",
+            "off": "low",
+            "xhigh": ""
+          }
+        },
+        {
+          "_launch": true,
+          "contextWindow": 262144,
+          "id": "smtek/Swift-Qwen3.8-27B:dspark-map",
+          "input": [
+            "text"
+          ],
+          "reasoning": true,
+          "thinkingLevelMap": {
+            "high": "",
+            "low": "low",
+            "max": "",
+            "medium": "medium",
+            "minimal": "low",
+            "off": "low",
+            "xhigh": ""
+          }
+        },
+        {
+          "_launch": true,
+          "contextWindow": 262144,
+          "id": "smtek/Qwen3.8-27B-AD:map-k4v",
+          "input": [
+            "text",
+            "image"
+          ],
+          "reasoning": true,
+          "thinkingLevelMap": {
+            "high": "",
+            "low": "low",
+            "max": "",
+            "medium": "medium",
+            "minimal": "low",
+            "off": "low",
+            "xhigh": ""
+          }
+        },
+        {
+          "_launch": true,
+          "contextWindow": 262144,
+          "id": "smtek/Swift-Qwen3.8-27B:dspark",
+          "input": [
+            "text"
+          ],
+          "reasoning": true,
+          "thinkingLevelMap": {
+            "high": "",
+            "low": "low",
+            "max": "",
+            "medium": "medium",
+            "minimal": "low",
+            "off": "low",
+            "xhigh": ""
+          }
+        },
+        {
+          "_launch": true,
+          "contextWindow": 262144,
+          "id": "smtek/Qwen3.8-27B-AD:map-k4v-128k",
+          "input": [
+            "text",
+            "image"
+          ],
+          "reasoning": true,
+          "thinkingLevelMap": {
+            "high": "",
+            "low": "low",
+            "max": "",
+            "medium": "medium",
+            "minimal": "low",
+            "off": "low",
+            "xhigh": ""
+          }
+        }
+      ]
+    },
+    "vllm": {
+      "api": "openai-completions",
+      "apiKey": "vllm",
+      "baseUrl": "http://127.0.0.1:8000/v1",
+      "models": [
+        {
+          "_launch": true,
+          "contextWindow": 98304,
+          "id": "qwen3.8-27b-ad",
+          "input": [
+            "text"
+          ],
+          "reasoning": true,
+          "thinkingLevelMap": {
+            "high": "medium",
+            "low": "low",
+            "max": "medium",
+            "medium": "medium",
+            "minimal": "low",
+            "off": "low",
+            "xhigh": "medium"
+          }
+        }
+      ]
+    }
+  }
+}

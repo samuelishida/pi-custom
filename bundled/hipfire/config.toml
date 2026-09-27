@@ -1,0 +1,13 @@
+schema_version = 1
+
+[reasoning]
+max_tokens = 4096
+
+[serve]
+queue_timeout_ms = 300000
+
+[generation]
+# Per-turn generation cap. Must exceed [reasoning] max_tokens
+# comfortably, otherwise the forced think-cap close has no room to emit
+# the closing tag and the turn fails closed (dropped stream).
+max_tokens = 32768
