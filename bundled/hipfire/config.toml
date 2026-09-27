@@ -1,7 +1,7 @@
 schema_version = 1
 
 [reasoning]
-max_tokens = 4096
+max_tokens = 16384
 
 [serve]
 queue_timeout_ms = 300000

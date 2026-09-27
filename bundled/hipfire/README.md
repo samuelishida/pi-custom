@@ -61,16 +61,15 @@ both sides:
 
 pi clamps this to `contextWindow - estimatedContext - 4096`, so the effective
 budget shrinks as a session grows. Auto-compaction keeps it far above the
-4096 think cap, but if the think cap is ever raised, raise the budget too.
+think cap (16384), but if the think cap is ever raised, raise the budget too.
 
-With the prompt capped at ~80k and `contextWindow = 163840`, roughly 79k tokens
-remain for the answer, so 65536 uses most of the available room. The per-turn
-budget does **not** interact with the 300s client timeout: during generation
-tokens stream continuously, so undici's idle-between-chunks timer keeps
-resetting. That timer only bites during **prefill**, when hipfire emits nothing
-(see below).
+The per-turn budget does **not** interact with the 300s client timeout: during
+generation tokens stream continuously, so undici's idle-between-chunks timer
+keeps resetting. That timer only bites during **prefill**, when hipfire emits
+nothing (see below). What governs the prompt size is pi's compaction line, which
+the guardrail extension computes from `contextWindow`.
 
-## Cold-prefill cliff: cap the prompt, not the response
+## Cold-prefill cliff (the 300s client timeout)
 
 hipfire emits one SSE chunk immediately and then stays silent for the whole
 prefill. pi's HTTP client (undici) aborts a stream that goes 300s without a
@@ -78,13 +77,30 @@ chunk, and that 300s is undici's default `bodyTimeout` -- not a hipfire limit
 and not user-exposed. Measured cold prefills: 20k tok -> 17s, 60k -> 85s,
 90k -> 207s, 120k -> never returned. Fitting `t ~= 2.56e-8*n^2` puts 300s at
 **~108k tokens**, so any prompt above that dies deterministically as
-`terminated` with zero content, and every retry re-runs the same cold prefill.
+`terminated` with zero content, and every retry re-runs the same cold prefill
+and dies identically.
 
-The fix is to compact well before the cliff.
-`~/.pi/agent/extensions/guardrail.ts` forces hipfire's dynamic compaction line
-to `HIPFIRE_SAFE_LINE = 80_000` (~172s cold prefill, comfortable margin).
-Without that override the extension's generic formula lands at ~109k for a
-163840 window -- right on the cliff.
+The guardrail no longer special-cases hipfire, so its line for a 163840 window
+is **~117k** -- above the cliff. Long hipfire sessions therefore need the
+timeout itself fixed rather than a prompt cap, via one of:
+
+- a keepalive proxy in front of hipfire that injects SSE comments (`:keepalive`)
+  during the silent prefill, so the client's idle timer keeps resetting;
+- a pi transport/fetch with `bodyTimeout` raised (pi accepts `fetch`/`transport`
+  options, but nothing in `models.json` wires one up);
+- a hipfire-side change to emit periodic progress during prefill (needs a
+  rebuild).
+
+Guardrail lines at the current formula (`reserve = min(32768 + 0.531*(window -
+122880), window * 0.2847)`):
+
+| window | compaction line |
+|---|---|
+| 122,880 (Qwen 27B ollama base) | 90,112 |
+| 147,456 | 105,475 |
+| 163,840 (hipfire) | 117,195 |
+| 262,144 | 187,512 |
+| 1,048,576 (deepseek 1M) | 750,046 |
 
 ## Notes
 
