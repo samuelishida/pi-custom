@@ -66,9 +66,9 @@
         "sha256": "160f12777f38cba8e8c95711743b483547320b2c1f57f6edacbdbd67d656ae19"
       },
       "pi-background-tasks": {
-        "version": "2.5.0",
-        "integrity": "sha512-YrOedXIYZYgLctffizuu2V5bI8u87Ex4ChFipXpVazsY75J9X98/9K7pO5Y7egB+6fgkE9KQPDxdDkdkLenhng==",
-        "sha256": "86375aedc2578cc6fd272e59f2fa5c3abda8872084dcf3f2cc118a239a391853"
+        "version": "2.6.7",
+        "integrity": "sha512-TqvJTwGTUVIPaLiqqKjlJJ0bXOXQ1oLPu0KBdCSPd/39TiEZ2EDLmidZJLGXs7OiMaS1yBSrmqXYqHggvtf0JQ==",
+        "sha256": "b801b8dac0c686843b75d6154c68bb35645ba7a4ddd9b4be7b4accc2925be0be"
       },
       "pi-muselinn-harness": {
         "version": "0.9.22",
@@ -107,8 +107,8 @@
       },
       "pi-background-tasks": {
         "repo": "ismailsaleekh/pi-background-tasks",
-        "version": "2.5.0",
-        "treeSha256": "7f6f5ae11cdd10819a4157c0348671ba21b59f08b9d130b91bd3b455f994a139"
+        "version": "2.6.7",
+        "treeSha256": "73c9c85d3f229f5bc9d0236986e224349c05a13b2ade14a73c53a222358f4015"
       },
       "pi-muselinn-harness": {
         "repo": "MuseLinn/pi-muselinn-harness",
@@ -118,7 +118,7 @@
     }
   },
   "bundled": {
-    "extensionsTreeSha256": "3204c090196ac11455ab66105857c981fdc35f48d7ac565e9e650631b9107fcc",
+    "extensionsTreeSha256": "e4ce6ed03e4b99a25229709d441241744fb7fa3b18807b2a1eb9823a4c9213da",
     "agentsTreeSha256": "93769860a2f513cc26f725fc4ec6804174979a56b611c655fac6bc5c1eb0f469",
     "npmCacheTreeSha256": "59b8f105e2588a803c5ea5edeada2e2b7eb02f234b03b207203108502b3e5238"
   },

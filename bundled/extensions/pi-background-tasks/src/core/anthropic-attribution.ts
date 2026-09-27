@@ -1,13 +1,19 @@
-import { createHash } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { appendFileSync, readFileSync } from 'node:fs';
 import { homedir } from 'node:os';
-import { join } from 'node:path';
+import { isAbsolute, join } from 'node:path';
+import type {
+  AssistantMessageEventStream as HostAssistantMessageEventStream,
+  Context as HostContext,
+  Model as HostModel,
+  SimpleStreamOptions as HostSimpleStreamOptions,
+} from '@earendil-works/pi-ai';
 
 export const CLAUDE_CODE_SESSION_HEADER = 'X-Claude-Code-Session-Id';
 
-const CLAUDE_CODE_VERSION = '2.1.251';
+const CLAUDE_CODE_VERSION = '2.1.280';
 const CLAUDE_CODE_ENTRYPOINT = 'sdk-cli';
-const CLAUDE_CODE_USER_AGENT = 'claude-cli/2.1.251 (external, sdk-cli)';
+const CLAUDE_CODE_USER_AGENT = 'claude-cli/2.1.280 (external, sdk-cli)';
 export const ANTHROPIC_1M_CONTEXT_BETA = 'context-1m-2025-08-07' as const;
 export const CLAUDE_CODE_200K_SUBSCRIPTION_CONTEXT_WINDOW = 200_000 as const;
 
@@ -72,6 +78,7 @@ const CLAUDE_AGENT_SDK_SYSTEM_TEXT =
 const FINGERPRINT_SALT = '59cf53e54c78';
 const AUDIT_ENV = 'PIPELINE_ANTHROPIC_ATTRIBUTION_AUDIT_PATH';
 const CACHE_RETENTION_ENV = 'PI_CACHE_RETENTION';
+export const ANTHROPIC_ACCOUNT_CONFIG_PATH_ENV = 'PI_ANTHROPIC_ACCOUNT_CONFIG_PATH';
 export const ANTHROPIC_CACHE_RETENTION_ENTRY = 'pipeline-anthropic-cache-retention';
 const ANTHROPIC_CACHE_RETENTION_SCHEMA = 'pipeline.anthropic_cache_retention.v1';
 export const ANTHROPIC_ATTRIBUTION_CLAIM_CHANNEL = 'pi-anthropic-attribution:claim:v1';
@@ -146,8 +153,11 @@ interface PiModelCostLike extends PiCostRatesLike {
 export interface PiModelLike {
   readonly provider?: string;
   readonly id?: string;
+  readonly name?: string;
   readonly api?: string;
   readonly baseUrl?: string;
+  readonly input?: readonly ('text' | 'image')[];
+  readonly contextWindow?: number;
   readonly maxTokens?: number;
   readonly reasoning?: boolean;
   readonly compat?: {
@@ -304,6 +314,11 @@ const CLAUDE_CODE_MODEL_POLICIES: Record<string, ClaudeCodeModelPolicy> = Object
     CLAUDE_CODE_ADAPTIVE_200K_BETA,
     'adaptive-effort',
   ),
+  'claude-opus-5-5': claudeCode200KSubscriptionPolicy(
+    'claude-opus-5-5',
+    CLAUDE_CODE_ADAPTIVE_200K_BETA,
+    'adaptive-effort',
+  ),
   'claude-sonnet-4-0': claudeCode200KSubscriptionPolicy(
     'claude-sonnet-4-0',
     CLAUDE_CODE_BETA,
@@ -393,8 +408,22 @@ interface PiAssistantDiagnosticLike {
   readonly details?: JsonObject;
 }
 
+export interface PiSystemMessage {
+  readonly role: 'system';
+  readonly content: string | readonly { readonly type: 'text'; readonly text: string }[];
+  readonly sections?: Readonly<Record<string, string | null>>;
+  readonly toolsAdded?: readonly PiToolLike[];
+  readonly toolsRemoved?: readonly { readonly name: string }[];
+  readonly timestamp: number;
+}
+
 type PiMessage =
-  | { readonly role: 'user'; readonly content: string | readonly PiContentBlock[] }
+  | PiSystemMessage
+  | {
+      readonly role: 'user';
+      readonly content: string | readonly PiContentBlock[];
+      readonly timestamp?: number;
+    }
   | {
       readonly role: 'assistant';
       readonly content: readonly JsonObject[];
@@ -404,6 +433,7 @@ type PiMessage =
       readonly responseId?: string;
       readonly stopReason?: string;
       readonly diagnostics?: readonly PiAssistantDiagnosticLike[];
+      readonly timestamp?: number;
     }
   | {
       readonly role: 'toolResult';
@@ -411,6 +441,7 @@ type PiMessage =
       readonly toolName?: string;
       readonly content: readonly PiContentBlock[];
       readonly isError?: boolean;
+      readonly timestamp?: number;
     };
 
 export interface PiStreamContext {
@@ -429,7 +460,7 @@ export interface PiSimpleStreamOptions {
   readonly apiKey?: string;
   readonly headers?: Record<string, string>;
   readonly maxTokens?: number;
-  readonly reasoning?: 'off' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh';
+  readonly reasoning?: 'off' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh' | 'max';
   readonly thinkingBudgets?: Partial<
     Record<'minimal' | 'low' | 'medium' | 'high' | 'xhigh', number>
   >;
@@ -449,8 +480,144 @@ export interface PiSimpleStreamOptions {
   ) => Promise<void> | void;
 }
 
+export type HostAnthropicMessagesApiFactory =
+  typeof import('@earendil-works/pi-ai/compat').anthropicMessagesApi;
+
+/** Gate optional host exports at activation, not ESM linking (#35). */
+export function resolveHostAnthropicMessagesApi(host: object): HostAnthropicMessagesApiFactory {
+  const factory: unknown = Reflect.get(host, 'anthropicMessagesApi');
+  if (typeof factory !== 'function') {
+    const condition = factory === undefined ? 'missing' : 'invalid';
+    throw new Error(
+      `pi_anthropic_attribution_host_adapter_${condition}: the host must expose compat.anthropicMessagesApi. Upgrade the host; only ambient attribution may be disabled with PI_BG_FEATURES (Anthropic children remain mandatory).`,
+    );
+  }
+  return factory as HostAnthropicMessagesApiFactory;
+}
+
+export interface AnthropicTranscriptHelpers {
+  getCurrentSystemPrompt(messages: readonly { readonly role: string }[]): string;
+  getCurrentTools(messages: readonly { readonly role: string }[]): readonly PiToolLike[];
+}
+
 export interface AnthropicTransportDependencies {
   readonly loadAccount?: () => ClaudeAttributionAccount;
+  readonly hostAnthropicMessagesApi?: HostAnthropicMessagesApiFactory;
+  readonly hostTranscriptHelpers?: AnthropicTranscriptHelpers | undefined;
+}
+
+function transcriptError(message: string): Error {
+  return new Error(`pi_anthropic_attribution_transcript_unsupported: ${message}`);
+}
+
+function isPiTool(value: unknown): value is PiToolLike {
+  return (
+    isPlainObject(value) &&
+    typeof value['name'] === 'string' &&
+    value['name'].length > 0 &&
+    (value['description'] === undefined || typeof value['description'] === 'string') &&
+    (value['parameters'] === undefined || isPlainObject(value['parameters']))
+  );
+}
+
+/** Resolve optional 0.86 APIs at the host gateway, never from the lazy core. */
+export function resolveHostTranscriptHelpers(host: object): AnthropicTranscriptHelpers | undefined {
+  const prompt: unknown = Reflect.get(host, 'getCurrentSystemPrompt');
+  const tools: unknown = Reflect.get(host, 'getCurrentTools');
+  // Older hosts legitimately have neither helper and still supply legacy Context.
+  if (prompt === undefined && tools === undefined) return undefined;
+  if (typeof prompt !== 'function' || typeof tools !== 'function') {
+    throw transcriptError('Pi must supply both getCurrentSystemPrompt and getCurrentTools');
+  }
+  return {
+    getCurrentSystemPrompt(messages) {
+      const result: unknown = Reflect.apply(prompt, host, [messages]);
+      if (typeof result !== 'string') throw transcriptError('Pi returned an invalid system prompt');
+      return result;
+    },
+    getCurrentTools(messages) {
+      const result: unknown = Reflect.apply(tools, host, [messages]);
+      if (!Array.isArray(result) || !result.every(isPiTool)) {
+        throw transcriptError('Pi returned invalid tool declarations');
+      }
+      return result;
+    },
+  };
+}
+
+function validateSystemMessage(message: PiSystemMessage): void {
+  if (typeof message.timestamp !== 'number' || !Number.isFinite(message.timestamp)) {
+    throw transcriptError('system message timestamp must be finite');
+  }
+  if (
+    typeof message.content !== 'string' &&
+    (!Array.isArray(message.content) ||
+      !message.content.every(
+        (block: unknown) =>
+          isPlainObject(block) && block['type'] === 'text' && typeof block['text'] === 'string',
+      ))
+  ) {
+    throw transcriptError('system message content must be text');
+  }
+  if (
+    message.sections !== undefined &&
+    (!isPlainObject(message.sections) ||
+      !Object.values(message.sections).every(
+        (value) => value === null || typeof value === 'string',
+      ))
+  ) {
+    throw transcriptError('system message sections must be strings or null');
+  }
+  if (
+    message.toolsAdded !== undefined &&
+    (!Array.isArray(message.toolsAdded) || !message.toolsAdded.every(isPiTool))
+  ) {
+    throw transcriptError('system message toolsAdded must contain tool declarations');
+  }
+  if (
+    message.toolsRemoved !== undefined &&
+    (!Array.isArray(message.toolsRemoved) ||
+      !message.toolsRemoved.every(
+        (tool: unknown) =>
+          isPlainObject(tool) && typeof tool['name'] === 'string' && tool['name'].length > 0,
+      ))
+  ) {
+    throw transcriptError('system message toolsRemoved must contain tool names');
+  }
+}
+
+function resolveAnthropicTranscript(
+  context: PiStreamContext,
+  helpers: AnthropicTranscriptHelpers | undefined,
+): PiStreamContext {
+  if (!context.messages.some((message) => message.role === 'system')) return context;
+  if (helpers === undefined) {
+    throw transcriptError('system messages require gateway-injected Pi transcript helpers');
+  }
+  for (const message of context.messages) {
+    if (message.role === 'system') validateSystemMessage(message);
+  }
+  // Match Pi's normalizeContext contract for legacy callers carrying both a base
+  // prompt/tool set and later transcript deltas. Empty explicit values stay empty.
+  const replay: readonly PiMessage[] =
+    context.systemPrompt !== undefined || context.tools !== undefined
+      ? [
+          {
+            role: 'system',
+            content: context.systemPrompt ?? '',
+            ...(context.tools === undefined ? {} : { toolsAdded: context.tools }),
+            timestamp: 0,
+          },
+          ...context.messages,
+        ]
+      : context.messages;
+  return {
+    systemPrompt: helpers.getCurrentSystemPrompt(replay),
+    tools: helpers.getCurrentTools(replay),
+    // Normalize before compaction detection, signature-epoch selection, and wire
+    // conversion so every lineage proof sees the same conversation-only sequence.
+    messages: context.messages.filter((message) => message.role !== 'system'),
+  };
 }
 
 export interface AssistantMessageLike {
@@ -465,14 +632,20 @@ export interface AssistantMessageLike {
     cacheRead: number;
     cacheWrite: number;
     cacheWrite1h?: number;
+    reasoning?: number;
     totalTokens: number;
     cost: { input: number; output: number; cacheRead: number; cacheWrite: number; total: number };
   };
-  stopReason: 'stop' | 'length' | 'toolUse' | 'aborted' | 'error';
+  stopReason: 'pending' | 'stop' | 'length' | 'toolUse' | 'aborted' | 'error' | 'deferred';
   timestamp: number;
+  responseModel?: string;
   responseId?: string;
+  providerThinkingLevel?: string;
+  endTurn?: boolean;
   diagnostics?: PiAssistantDiagnosticLike[];
+  deferred?: unknown;
   errorMessage?: string;
+  rawStopReason?: string;
 }
 
 type AssistantMessageEvent =
@@ -862,20 +1035,43 @@ export function extractClaudeAttributionAccount(
   };
 }
 
+export function resolveClaudeAttributionConfigPath(
+  explicitConfigPath?: string,
+  env?: ProviderEnv,
+  homeDirectory = homedir(),
+): string {
+  const configuredPath = providerEnvValue(ANTHROPIC_ACCOUNT_CONFIG_PATH_ENV, env);
+  const selectedPath = explicitConfigPath ?? configuredPath ?? join(homeDirectory, '.claude.json');
+  const source =
+    explicitConfigPath !== undefined
+      ? 'explicit configPath'
+      : configuredPath !== undefined
+        ? ANTHROPIC_ACCOUNT_CONFIG_PATH_ENV
+        : 'default ~/.claude.json path';
+  if (selectedPath.trim().length === 0 || !isAbsolute(selectedPath)) {
+    throw new Error(
+      `Anthropic attribution ${source} must be a non-empty absolute file path; got ${JSON.stringify(selectedPath)}`,
+    );
+  }
+  return selectedPath;
+}
+
 export function loadClaudeAttributionAccount(
-  configPath = join(homedir(), '.claude.json'),
+  configPath?: string,
+  env?: ProviderEnv,
 ): ClaudeAttributionAccount {
+  const selectedPath = resolveClaudeAttributionConfigPath(configPath, env);
   let configText: string;
   try {
-    configText = readFileSync(configPath, 'utf8');
+    configText = readFileSync(selectedPath, 'utf8');
   } catch (error) {
     throw new Error(
-      `Anthropic attribution config ${configPath} could not be read: ${error instanceof Error ? error.message : String(error)}`,
+      `Anthropic attribution config ${selectedPath} could not be read: ${error instanceof Error ? error.message : String(error)}`,
     );
   }
   return extractClaudeAttributionAccount(
-    parseJsonValue(configText, `Anthropic attribution config ${configPath}`),
-    configPath,
+    parseJsonValue(configText, `Anthropic attribution config ${selectedPath}`),
+    selectedPath,
   );
 }
 
@@ -982,10 +1178,12 @@ export function registerAnthropicAttributionProvider(
       streamAnthropicViaBetaMessages(
         model,
         context,
-        {
-          ...(options ?? {}),
-          cacheRetention: resolveRegisteredCacheRetention(options, getSessionOverride()),
-        },
+        model.provider === 'anthropic'
+          ? {
+              ...(options ?? {}),
+              cacheRetention: resolveRegisteredCacheRetention(options, getSessionOverride()),
+            }
+          : options,
         dependencies,
       ),
   });
@@ -1414,6 +1612,10 @@ function isSha256(value: unknown): value is string {
   return typeof value === 'string' && /^[a-f0-9]{64}$/u.test(value);
 }
 
+function isNonEmptyString(value: unknown): value is string {
+  return typeof value === 'string' && value.trim().length > 0;
+}
+
 function blockWithoutCacheControl(block: unknown): unknown {
   if (!isPlainObject(block)) return block;
   const output = { ...block };
@@ -1466,31 +1668,82 @@ function parseAnthropicLineageDetails(
     .find((candidate) => candidate.type === ANTHROPIC_LINEAGE_DIAGNOSTIC_TYPE);
   const details = diagnostic?.details;
   if (!isPlainObject(details)) return undefined;
+
+  const sourceModel = details['source_model'];
+  const responseId = details['response_id'];
+  const assistantContentSha256 = details['assistant_content_sha256'];
+  const conversationStaticSha256 = details['conversation_static_sha256'];
+  const requestMessageCount = details['request_message_count'];
+  const requestMessagesSha256 = details['request_messages_sha256'];
+  const cacheProfileSha256 = details['cache_profile_sha256'];
+  const cacheRetention = details['cache_retention'];
+  const compactionBoundarySha256 = details['compaction_boundary_sha256'];
+  const signatureEpochSha256 = details['signature_epoch_sha256'];
+  const signatureEpochInheritsPrior = details['signature_epoch_inherits_prior'];
+  const previousMessageId = details['previous_message_id'];
   if (
     details['schema_version'] !== ANTHROPIC_LINEAGE_SCHEMA ||
     details['projection_version'] !== ANTHROPIC_PROJECTION_VERSION ||
     details['source_provider'] !== 'anthropic' ||
     details['source_api'] !== 'anthropic-messages' ||
-    typeof details['source_model'] !== 'string' ||
-    typeof details['response_id'] !== 'string' ||
-    !isSha256(details['assistant_content_sha256']) ||
-    !isSha256(details['conversation_static_sha256']) ||
-    !Number.isSafeInteger(details['request_message_count']) ||
-    (details['request_message_count'] as number) < 0 ||
-    !isSha256(details['request_messages_sha256']) ||
-    !isSha256(details['cache_profile_sha256']) ||
-    (details['cache_retention'] !== 'none' &&
-      details['cache_retention'] !== 'short' &&
-      details['cache_retention'] !== 'long') ||
-    (details['compaction_boundary_sha256'] !== null &&
-      !isSha256(details['compaction_boundary_sha256'])) ||
-    !isSha256(details['signature_epoch_sha256']) ||
-    typeof details['signature_epoch_inherits_prior'] !== 'boolean' ||
-    (details['previous_message_id'] !== null && typeof details['previous_message_id'] !== 'string')
+    !isNonEmptyString(sourceModel) ||
+    !isNonEmptyString(responseId) ||
+    !isSha256(assistantContentSha256) ||
+    !isSha256(conversationStaticSha256) ||
+    typeof requestMessageCount !== 'number' ||
+    !Number.isSafeInteger(requestMessageCount) ||
+    requestMessageCount < 0 ||
+    !isSha256(requestMessagesSha256) ||
+    !isSha256(cacheProfileSha256) ||
+    (cacheRetention !== 'none' && cacheRetention !== 'short' && cacheRetention !== 'long') ||
+    (compactionBoundarySha256 !== null && !isSha256(compactionBoundarySha256)) ||
+    !isSha256(signatureEpochSha256) ||
+    typeof signatureEpochInheritsPrior !== 'boolean' ||
+    (previousMessageId !== null && !isNonEmptyString(previousMessageId))
   ) {
     return undefined;
   }
-  return details as unknown as AnthropicLineageDetails;
+
+  return {
+    schema_version: ANTHROPIC_LINEAGE_SCHEMA,
+    projection_version: ANTHROPIC_PROJECTION_VERSION,
+    source_provider: 'anthropic',
+    source_api: 'anthropic-messages',
+    source_model: sourceModel,
+    response_id: responseId,
+    assistant_content_sha256: assistantContentSha256,
+    conversation_static_sha256: conversationStaticSha256,
+    request_message_count: requestMessageCount,
+    request_messages_sha256: requestMessagesSha256,
+    cache_profile_sha256: cacheProfileSha256,
+    cache_retention: cacheRetention,
+    compaction_boundary_sha256: compactionBoundarySha256,
+    signature_epoch_sha256: signatureEpochSha256,
+    signature_epoch_inherits_prior: signatureEpochInheritsPrior,
+    previous_message_id: previousMessageId,
+  };
+}
+
+function isSuccessfulLineageStopReason(
+  stopReason: string | undefined,
+): stopReason is 'stop' | 'length' | 'toolUse' {
+  return stopReason === 'stop' || stopReason === 'length' || stopReason === 'toolUse';
+}
+
+function lineageBindsContainingAssistant(
+  message: Extract<PiMessage, { role: 'assistant' }>,
+  lineage: AnthropicLineageDetails,
+): boolean {
+  return (
+    message.provider === lineage.source_provider &&
+    message.api === lineage.source_api &&
+    isNonEmptyString(message.model) &&
+    message.model === lineage.source_model &&
+    isSuccessfulLineageStopReason(message.stopReason) &&
+    isNonEmptyString(message.responseId) &&
+    message.responseId === lineage.response_id &&
+    lineage.assistant_content_sha256 === assistantContentHash(message.content)
+  );
 }
 
 function canTargetReadAnthropicThinking(sourceModel: string, targetModel: string): boolean {
@@ -1529,11 +1782,25 @@ function resolveSignatureEpochPolicy(
   compactionBoundarySha256: string | null,
 ): SignatureEpochPolicy {
   const targetModelId = normalizedAnthropicModelId(model);
-  const latest = latestLineageForTarget({ messages }, targetModelId);
-  if (latest === undefined) {
+  const latestState = targetLineageState({ messages }, targetModelId);
+  if (latestState.kind === 'none') {
     return initialSignatureEpochPolicy(targetModelId, cacheRetention, compactionBoundarySha256);
   }
+  if (latestState.kind === 'untrusted') {
+    return {
+      sha256: sha256Canonical({
+        projection_version: ANTHROPIC_PROJECTION_VERSION,
+        kind: 'untrusted-lineage-reset',
+        target_model: targetModelId,
+        cache_retention: cacheRetention,
+        compaction_boundary_sha256: compactionBoundarySha256,
+        latest_assistant_sha256: latestState.assistantSha256,
+      }),
+      inheritsPrior: false,
+    };
+  }
 
+  const latest = latestState.lineage;
   const retentionChanged = latest.cache_retention !== cacheRetention;
   const declaredNewCompaction =
     compactionBoundarySha256 !== null &&
@@ -1565,22 +1832,12 @@ function isTrustedReplayableAnthropicAssistant(
   conversationStaticSha256: string,
   wireMessagesBeforeAssistant: readonly JsonObject[],
 ): boolean {
-  if (
-    message.provider !== 'anthropic' ||
-    message.api !== 'anthropic-messages' ||
-    typeof message.model !== 'string' ||
-    message.stopReason === 'error' ||
-    message.stopReason === 'aborted' ||
-    !canTargetReadAnthropicThinking(message.model, normalizedAnthropicModelId(targetModel))
-  ) {
-    return false;
-  }
+  if (typeof message.model !== 'string') return false;
   const lineage = parseAnthropicLineageDetails(message);
   if (
     lineage === undefined ||
-    lineage.source_model !== message.model ||
-    lineage.response_id !== message.responseId ||
-    lineage.assistant_content_sha256 !== assistantContentHash(message.content) ||
+    !lineageBindsContainingAssistant(message, lineage) ||
+    !canTargetReadAnthropicThinking(message.model, normalizedAnthropicModelId(targetModel)) ||
     lineage.cache_retention !== targetCacheRetention ||
     lineage.conversation_static_sha256 !== conversationStaticSha256 ||
     lineage.request_message_count !== wireMessagesBeforeAssistant.length ||
@@ -1756,6 +2013,12 @@ function convertMessages(
       continue;
     }
 
+    if (message.role !== 'toolResult') {
+      throw new Error(
+        `Anthropic attribution encountered unsupported message role ${JSON.stringify(Reflect.get(message, 'role'))}`,
+      );
+    }
+
     const toolResults: JsonObject[] = [];
     let lookahead = index;
     while (lookahead < messages.length && messages[lookahead]?.role === 'toolResult') {
@@ -1806,6 +2069,9 @@ function thinkingBudgetFor(
   maxTokens: number,
   custom?: PiSimpleStreamOptions['thinkingBudgets'],
 ): number {
+  if (level === 'max') {
+    throw new Error('Anthropic attribution reasoning=max requires an adaptive-effort model');
+  }
   const defaults = {
     minimal: 1024,
     low: 4096,
@@ -1820,16 +2086,17 @@ function thinkingBudgetFor(
 
 function adaptiveEffortFor(
   level: Exclude<NonNullable<PiSimpleStreamOptions['reasoning']>, 'off'>,
-): 'low' | 'medium' | 'high' | 'xhigh' {
+): 'low' | 'medium' | 'high' | 'xhigh' | 'max' {
   switch (level) {
     case 'low':
     case 'medium':
     case 'high':
     case 'xhigh':
+    case 'max':
       return level;
     case 'minimal':
       throw new Error(
-        'Anthropic attribution cannot map Pi reasoning=minimal to Claude adaptive effort; use low, medium, high, or xhigh',
+        'Anthropic attribution cannot map Pi reasoning=minimal to Claude adaptive effort; use low, medium, high, xhigh, or max',
       );
   }
 }
@@ -1857,13 +2124,26 @@ export function buildAnthropicRequestParams(
   model: PiModelLike,
   context: PiStreamContext,
   options?: PiSimpleStreamOptions,
+  dependencies: AnthropicTransportDependencies = {},
 ): JsonObject {
+  return buildAnthropicRequest(
+    model,
+    resolveAnthropicTranscript(context, dependencies.hostTranscriptHelpers),
+    options,
+  ).params;
+}
+
+function buildAnthropicRequest(
+  model: PiModelLike,
+  context: PiStreamContext,
+  options?: PiSimpleStreamOptions,
+): { readonly params: JsonObject; readonly signatureEpoch: SignatureEpochPolicy } {
   const policy = resolveClaudeCodeModelPolicy(model);
   const maxTokens = resolveAnthropicMaxTokens(model);
   const cacheControl = resolveAnthropicCacheControl(model, options);
   const cacheRetention: CacheRetention =
     cacheControl === undefined ? 'none' : cacheControl.ttl === '1h' ? 'long' : 'short';
-  const signatureEpoch = resolveSignatureEpochPolicy(
+  let signatureEpoch = resolveSignatureEpochPolicy(
     model,
     context.messages,
     cacheRetention,
@@ -1934,8 +2214,37 @@ export function buildAnthropicRequestParams(
     params['thinking'] = { type: 'disabled' };
     params['temperature'] = options?.temperature ?? 1;
   }
+  const previous = latestLineageForTarget(context, normalizedAnthropicModelId(model));
+  if (
+    previous !== undefined &&
+    signatureEpoch.sha256 === previous.signature_epoch_sha256 &&
+    (previous.cache_profile_sha256 !== cacheProfileHash(model, policy, params, staticSha256) ||
+      !hasLineageRequestPrefix(requestMessagesFromPayload(params), previous))
+  ) {
+    // Resume/reload and profile edits can invalidate a lane. Re-project before transport,
+    // rather than just clearing the response ID while retaining prefix-bound signatures.
+    signatureEpoch = {
+      sha256: sha256Canonical({
+        projection_version: ANTHROPIC_PROJECTION_VERSION,
+        kind: 'lineage-reset',
+        previous_signature_epoch_sha256: previous.signature_epoch_sha256,
+        previous_response_id: previous.response_id,
+        cache_profile_sha256: cacheProfileHash(model, policy, params, staticSha256),
+        request_messages_sha256: promptMessagesHash(requestMessagesFromPayload(params)),
+      }),
+      inheritsPrior: false,
+    };
+    params['messages'] = convertMessages(
+      model,
+      context.messages,
+      staticSha256,
+      cacheRetention,
+      signatureEpoch,
+      cacheControl,
+    );
+  }
   assertCacheControlBreakpointLimit(params);
-  return params;
+  return { params, signatureEpoch };
 }
 
 interface PreparedAnthropicLineage {
@@ -2001,24 +2310,63 @@ function cacheRetentionFromPayload(payload: JsonObject): CacheRetention {
   return inspectCacheControls(payload).retention ?? 'none';
 }
 
+type TargetLineageState =
+  | { readonly kind: 'none' }
+  | { readonly kind: 'trusted'; readonly lineage: AnthropicLineageDetails }
+  | { readonly kind: 'untrusted'; readonly assistantSha256: string };
+
+function untrustedAssistantSha256(message: Extract<PiMessage, { role: 'assistant' }>): string {
+  return sha256Canonical({
+    provider: message.provider ?? null,
+    api: message.api ?? null,
+    model: message.model ?? null,
+    response_id: message.responseId ?? null,
+    stop_reason: message.stopReason ?? null,
+    assistant_content_sha256: assistantContentHash(message.content),
+    lineage_diagnostics: (message.diagnostics ?? []).filter(
+      (diagnostic) => diagnostic.type === ANTHROPIC_LINEAGE_DIAGNOSTIC_TYPE,
+    ),
+  });
+}
+
+function targetLineageState(context: PiStreamContext, targetModelId: string): TargetLineageState {
+  for (let index = context.messages.length - 1; index >= 0; index -= 1) {
+    const message = context.messages[index];
+    if (message?.role !== 'assistant') continue;
+
+    const lineageDiagnostics = (message.diagnostics ?? []).filter(
+      (diagnostic) => diagnostic.type === ANTHROPIC_LINEAGE_DIAGNOSTIC_TYPE,
+    );
+    const latestRawDetails = lineageDiagnostics.at(-1)?.details;
+    const receiptClaimsTarget = latestRawDetails?.['source_model'] === targetModelId;
+    const assistantClaimsTarget = message.model === targetModelId;
+    if (!assistantClaimsTarget && !receiptClaimsTarget) continue;
+
+    if (
+      (message.stopReason === 'error' || message.stopReason === 'aborted') &&
+      lineageDiagnostics.length === 0
+    ) {
+      continue;
+    }
+
+    const lineage = parseAnthropicLineageDetails(message);
+    if (
+      lineage?.source_model === targetModelId &&
+      lineageBindsContainingAssistant(message, lineage)
+    ) {
+      return { kind: 'trusted', lineage };
+    }
+    return { kind: 'untrusted', assistantSha256: untrustedAssistantSha256(message) };
+  }
+  return { kind: 'none' };
+}
+
 function latestLineageForTarget(
   context: PiStreamContext,
   targetModelId: string,
 ): AnthropicLineageDetails | undefined {
-  for (let index = context.messages.length - 1; index >= 0; index -= 1) {
-    const message = context.messages[index];
-    if (
-      message?.role !== 'assistant' ||
-      message.model !== targetModelId ||
-      message.stopReason === 'error' ||
-      message.stopReason === 'aborted'
-    ) {
-      continue;
-    }
-    const lineage = parseAnthropicLineageDetails(message);
-    return lineage?.source_model === targetModelId ? lineage : undefined;
-  }
-  return undefined;
+  const state = targetLineageState(context, targetModelId);
+  return state.kind === 'trusted' ? state.lineage : undefined;
 }
 
 function declaredCompactionBoundarySha256(messages: readonly JsonObject[]): string | null {
@@ -2035,11 +2383,23 @@ function declaredCompactionBoundarySha256(messages: readonly JsonObject[]): stri
   return sha256Canonical(promptMessagesWithoutCacheControls([firstMessage])[0]);
 }
 
+function hasLineageRequestPrefix(
+  messages: readonly JsonObject[],
+  previous: AnthropicLineageDetails,
+): boolean {
+  return (
+    messages.length >= previous.request_message_count &&
+    promptMessagesHash(messages.slice(0, previous.request_message_count)) ===
+      previous.request_messages_sha256
+  );
+}
+
 function prepareAnthropicLineageDetails(args: {
   readonly model: PiModelLike;
   readonly policy: ClaudeCodeModelPolicy;
   readonly context: PiStreamContext;
   readonly payload: JsonObject;
+  readonly signatureEpoch: SignatureEpochPolicy;
 }): PreparedAnthropicLineage['details'] {
   const targetModelId = normalizedAnthropicModelId(args.model);
   const messages = requestMessagesFromPayload(args.payload);
@@ -2050,37 +2410,16 @@ function prepareAnthropicLineageDetails(args: {
   const profileSha256 = cacheProfileHash(args.model, args.policy, args.payload, staticSha256);
   const cacheRetention = cacheRetentionFromPayload(args.payload);
   const compactionBoundarySha256 = declaredCompactionBoundarySha256(messages);
-  const signatureEpoch = resolveSignatureEpochPolicy(
-    args.model,
-    args.context.messages,
-    cacheRetention,
-    compactionBoundarySha256,
-  );
+  const signatureEpoch = args.signatureEpoch;
   let previous = latestLineageForTarget(args.context, targetModelId);
-  if (previous !== undefined) {
-    const prefixStillExists =
-      messages.length >= previous.request_message_count &&
-      promptMessagesHash(messages.slice(0, previous.request_message_count)) ===
-        previous.request_messages_sha256;
-    if (
-      !prefixStillExists &&
-      compactionBoundarySha256 !== null &&
-      compactionBoundarySha256 !== previous.compaction_boundary_sha256
-    ) {
-      previous = undefined;
-    } else {
-      if (!prefixStillExists) {
-        throw new Error(
-          'Anthropic cache lineage diverged before transport: message history is not append-only',
-        );
-      }
-      if (previous.cache_profile_sha256 !== profileSha256) {
-        throw new Error(
-          'Anthropic cache lineage diverged before transport: model/system/tools/thinking/beta profile changed',
-        );
-      }
-      if (previous.cache_retention !== cacheRetention) previous = undefined;
-    }
+  if (
+    previous !== undefined &&
+    (signatureEpoch.sha256 !== previous.signature_epoch_sha256 ||
+      !hasLineageRequestPrefix(messages, previous) ||
+      previous.cache_profile_sha256 !== profileSha256 ||
+      previous.cache_retention !== cacheRetention)
+  ) {
+    previous = undefined;
   }
   return {
     schema_version: ANTHROPIC_LINEAGE_SCHEMA,
@@ -2109,6 +2448,7 @@ class AnthropicLineageCoordinator {
     readonly policy: ClaudeCodeModelPolicy;
     readonly context: PiStreamContext;
     readonly payload: JsonObject;
+    readonly signatureEpoch: SignatureEpochPolicy;
   }): PreparedAnthropicLineage {
     const targetModelId = normalizedAnthropicModelId(args.model);
     const key = `${args.sessionId}\u0000${targetModelId}`;
@@ -2136,6 +2476,14 @@ export function createAnthropicLineageDiagnostic(args: {
   readonly requestPayload: JsonObject;
   readonly previousMessageId?: string | null;
 }): PiAssistantDiagnosticLike {
+  if (!isNonEmptyString(args.responseId)) {
+    throw new Error('Anthropic lineage diagnostic requires a non-empty response ID');
+  }
+  if (args.previousMessageId !== undefined && args.previousMessageId !== null) {
+    if (!isNonEmptyString(args.previousMessageId)) {
+      throw new Error('Anthropic lineage diagnostic requires a non-empty previous response ID');
+    }
+  }
   const policy = resolveClaudeCodeModelPolicy(args.model);
   const messages = requestMessagesFromPayload(args.requestPayload);
   const staticSha256 = conversationStaticHash(
@@ -2177,7 +2525,7 @@ function appendLineageDiagnostic(
   output: AssistantMessageLike,
   prepared: PreparedAnthropicLineage,
 ): void {
-  if (typeof output.responseId !== 'string' || output.responseId.length === 0) {
+  if (!isNonEmptyString(output.responseId)) {
     throw new Error(
       'Anthropic attribution successful response is missing responseId lineage proof',
     );
@@ -2488,33 +2836,198 @@ function createOutput(model: PiModelLike): AssistantMessageLike {
   };
 }
 
-async function forwardToBuiltInAnthropic(
+// Connection retries are deliberately narrower than Pi's outer agent retry policy.
+// In particular, a response (including a signature rejection) or partial SSE stream
+// must never enter this loop. Unknown/TLS/configuration errors also fail immediately.
+const TRANSIENT_CONNECTION_CODES = new Set([
+  'ECONNRESET',
+  'ECONNREFUSED',
+  'EPIPE',
+  'ETIMEDOUT',
+  'EAI_AGAIN',
+  'ENETUNREACH',
+  'EHOSTUNREACH',
+  'UND_ERR_SOCKET',
+  'UND_ERR_CONNECT_TIMEOUT',
+  'UND_ERR_HEADERS_TIMEOUT',
+]);
+
+function transientConnectionCode(
+  error: unknown,
+  seen = new Set<object>(),
+  depth = 0,
+): string | undefined {
+  if (!(error instanceof Error) || depth > 8 || seen.size >= 32 || seen.has(error))
+    return undefined;
+  seen.add(error);
+  if (error.name === 'AbortError') return undefined;
+  // Happy-Eyeballs connection attempts may reject as an AggregateError. Every
+  // member must be known transient; one certificate/config error forbids replay.
+  if (error instanceof AggregateError) {
+    const errors: unknown = error.errors;
+    if (!Array.isArray(errors) || errors.length === 0 || errors.length > 16) return undefined;
+    const codes: string[] = [];
+    for (const member of errors) {
+      const code = transientConnectionCode(member, seen, depth + 1);
+      if (code === undefined) return undefined;
+      codes.push(code);
+    }
+    return [...new Set(codes)].sort().join(',');
+  }
+  const code: unknown = Reflect.get(error, 'code');
+  if (code !== undefined) {
+    return typeof code === 'string' && TRANSIENT_CONNECTION_CODES.has(code) ? code : undefined;
+  }
+  return transientConnectionCode(error.cause, seen, depth + 1);
+}
+
+function connectionRetryLimit(value: number | undefined): number {
+  if (value === undefined) return 2;
+  if (!Number.isSafeInteger(value) || value < 0 || value >= Number.MAX_SAFE_INTEGER) {
+    throw new Error(
+      'Anthropic attribution options.maxRetries must be a non-negative safe integer below Number.MAX_SAFE_INTEGER',
+    );
+  }
+  return value;
+}
+
+function connectionTimeout(value: number | undefined): number | undefined {
+  if (
+    value !== undefined &&
+    (!Number.isSafeInteger(value) || value <= 0 || value > 2_147_483_647)
+  ) {
+    throw new Error(
+      'Anthropic attribution options.timeoutMs must be an integer from 1 through 2147483647',
+    );
+  }
+  return value;
+}
+
+function waitForConnectionRetry(delayMs: number, signal: AbortSignal | undefined): Promise<void> {
+  signal?.throwIfAborted();
+  return new Promise((resolve, reject) => {
+    const onAbort = (): void => {
+      clearTimeout(timer);
+      signal?.removeEventListener('abort', onAbort);
+      reject(signal?.reason);
+    };
+    const timer = setTimeout(() => {
+      signal?.removeEventListener('abort', onAbort);
+      resolve();
+    }, delayMs);
+    signal?.addEventListener('abort', onAbort, { once: true });
+    if (signal?.aborted) onAbort();
+  });
+}
+
+async function fetchAnthropicResponse(
+  url: string,
+  requestInit: RequestInit,
+  maxRetries: number,
+  timeoutMs: number | undefined,
+  onRetry: (retry: number, code: string, delayMs: number) => void,
+): Promise<Response> {
+  const callerSignal = requestInit.signal ?? undefined;
+  for (let attempt = 0; ; attempt += 1) {
+    callerSignal?.throwIfAborted();
+    const deadline = timeoutMs === undefined ? undefined : new AbortController();
+    // The caller retains cancellation of the returned response body after our
+    // per-attempt header timer is cleared. No manual abort bridge is detached.
+    const signal =
+      deadline === undefined
+        ? callerSignal
+        : callerSignal === undefined
+          ? deadline.signal
+          : AbortSignal.any([callerSignal, deadline.signal]);
+    const init = signal === undefined ? requestInit : { ...requestInit, signal };
+    const timer =
+      timeoutMs === undefined
+        ? undefined
+        : setTimeout(() => {
+            deadline?.abort(
+              Object.assign(new Error(`Anthropic connection timed out after ${timeoutMs}ms`), {
+                code: 'ETIMEDOUT',
+              }),
+            );
+          }, timeoutMs);
+    let response: Response | undefined;
+    let retryCode: string | undefined;
+    try {
+      response = await fetch(url, init);
+    } catch (error) {
+      // Wait for fetch to settle after its actual abort before another attempt.
+      // Caller cancellation is terminal; a local header timeout may be retried.
+      callerSignal?.throwIfAborted();
+      const failure: unknown = deadline?.signal.aborted ? deadline.signal.reason : error;
+      retryCode = transientConnectionCode(failure);
+      if (retryCode === undefined) throw failure;
+      if (attempt >= maxRetries) {
+        throw new Error(
+          `Anthropic connection error after ${attempt + 1} attempt(s): ${retryCode}`,
+          { cause: failure },
+        );
+      }
+    } finally {
+      if (timer !== undefined) clearTimeout(timer);
+    }
+    if (retryCode !== undefined) {
+      const delayMs = Math.floor(
+        Math.min(500 * 2 ** Math.min(attempt, 4), 8_000) * (1 - Math.random() * 0.25),
+      );
+      onRetry(attempt + 1, retryCode, delayMs);
+      await waitForConnectionRetry(delayMs, callerSignal);
+      continue;
+    }
+    if (response === undefined) throw new Error('Anthropic fetch returned no response');
+    // A late response after cancellation is disposed, never re-entered into retry.
+    if (signal?.aborted) {
+      try {
+        await response.body?.cancel();
+      } finally {
+        signal.throwIfAborted();
+      }
+    }
+    return response;
+  }
+}
+
+type HostForwardingModel = PiModelLike & HostModel<'anthropic-messages'>;
+type HostForwardingContext = PiStreamContext & HostContext;
+type HostForwardingOptions = PiSimpleStreamOptions & HostSimpleStreamOptions;
+type HostForwardingStream = AssistantMessageEventStreamLike & HostAssistantMessageEventStream;
+
+function forwardToBuiltInAnthropic(
   model: PiModelLike,
   context: PiStreamContext,
   options: PiSimpleStreamOptions | undefined,
-  stream: AssistantMessageEventStreamLike,
-  output: AssistantMessageLike,
-): Promise<void> {
-  try {
-    const dynamicImport = new Function('specifier', 'return import(specifier)') as (
-      specifier: string,
-    ) => Promise<{
-      streamSimpleAnthropic: (
-        model: PiModelLike,
-        context: PiStreamContext,
-        options?: PiSimpleStreamOptions,
-      ) => AssistantMessageEventStreamLike;
-    }>;
-    const mod = await dynamicImport('@earendil-works/pi-ai/anthropic');
-    const delegated = mod.streamSimpleAnthropic(model, context, options);
-    for await (const event of delegated) stream.push(event);
-    stream.end(await delegated.result());
-  } catch (error) {
-    output.stopReason = 'error';
-    output.errorMessage = `Anthropic attribution could not delegate non-target provider ${JSON.stringify(model.provider)}: ${error instanceof Error ? error.message : String(error)}`;
-    stream.push({ type: 'error', reason: 'error', error: output });
-    stream.end();
+  dependencies: AnthropicTransportDependencies,
+): AssistantMessageEventStreamLike {
+  // The compiled gateway resolves this host-owned adapter through Pi's alias-aware
+  // extension loader and injects it across the lazy native-import boundary. Keeping
+  // the deferred core free of runtime Pi package imports prevents Node from trying to
+  // resolve a private @earendil-works/pi-ai installation beside a managed package.
+  const hostAnthropicMessagesApi = dependencies.hostAnthropicMessagesApi;
+  if (hostAnthropicMessagesApi === undefined) {
+    throw new Error(
+      "pi_anthropic_attribution_host_adapter_missing: the extension gateway did not inject Pi's anthropic-messages adapter",
+    );
   }
+
+  // The host owns both its legacy Context or normalized TranscriptContext input and
+  // the complete stream/event/result shape. These intersections only mark that
+  // host-owned boundary; no request, callback, event, or result is reconstructed.
+  const hostApi = hostAnthropicMessagesApi();
+  if (typeof hostApi?.streamSimple !== 'function') {
+    throw new Error(
+      'pi_anthropic_attribution_host_adapter_invalid: the host adapter must provide streamSimple',
+    );
+  }
+  const delegated = hostApi.streamSimple(
+    model as HostForwardingModel,
+    context as HostForwardingContext,
+    options as HostForwardingOptions | undefined,
+  );
+  return delegated as HostForwardingStream;
 }
 
 export function streamAnthropicViaBetaMessages(
@@ -2523,17 +3036,18 @@ export function streamAnthropicViaBetaMessages(
   options?: PiSimpleStreamOptions,
   dependencies: AnthropicTransportDependencies = {},
 ): AssistantMessageEventStreamLike {
-  const stream = createAssistantMessageEventStream();
-  const output = createOutput(model);
-
   if (model.provider !== 'anthropic') {
-    void forwardToBuiltInAnthropic(model, context, options, stream, output);
-    return stream;
+    return forwardToBuiltInAnthropic(model, context, options, dependencies);
   }
 
+  const stream = createAssistantMessageEventStream();
+  const output = createOutput(model);
   void (async () => {
     let preparedLineage: PreparedAnthropicLineage | undefined;
     try {
+      options?.signal?.throwIfAborted();
+      const maxRetries = connectionRetryLimit(options?.maxRetries);
+      const timeoutMs = connectionTimeout(options?.timeoutMs);
       const apiKey = options?.apiKey;
       if (typeof apiKey !== 'string' || apiKey.length === 0) {
         throw new Error(
@@ -2546,21 +3060,33 @@ export function streamAnthropicViaBetaMessages(
         );
       }
 
-      const sessionId = requireSessionId(options?.sessionId, 'options.sessionId');
+      // Pi's routing id is optional for extension-owned one-off requests (#33/#34).
+      // Allocate once per request, never from the active parent's cache lane. A
+      // supplied malformed id still fails, and transport retries reuse this id.
+      const sessionId =
+        options?.sessionId === undefined
+          ? randomUUID()
+          : requireSessionId(options.sessionId, 'options.sessionId');
       const account = requireAttributionAccount(
-        (dependencies.loadAccount ?? loadClaudeAttributionAccount)(),
+        dependencies.loadAccount?.() ?? loadClaudeAttributionAccount(undefined, options?.env),
       );
       const url = resolveAnthropicBetaMessagesUrl(model);
       const policy = resolveClaudeCodeModelPolicy(model);
-      let params = buildAnthropicRequestParams(model, context, options);
+      const requestContext = resolveAnthropicTranscript(
+        context,
+        dependencies.hostTranscriptHelpers,
+      );
+      const request = buildAnthropicRequest(model, requestContext, options);
+      let params = request.params;
       const billingSystemText = buildClaudeCodeBillingSystemText(
         firstUserMessageTextFromPayload(params),
       );
       const provisionalLineage = prepareAnthropicLineageDetails({
         model,
         policy,
-        context,
+        context: requestContext,
         payload: params,
+        signatureEpoch: request.signatureEpoch,
       });
       if (policy.supportsCacheDiagnostics) {
         if (!policy.beta.split(',').includes(ANTHROPIC_CACHE_DIAGNOSTICS_BETA)) {
@@ -2606,8 +3132,9 @@ export function streamAnthropicViaBetaMessages(
         sessionId,
         model,
         policy,
-        context,
+        context: requestContext,
         payload: params,
+        signatureEpoch: request.signatureEpoch,
       });
       if (
         preparedLineage.details.previous_message_id !== provisionalLineage.previous_message_id ||
@@ -2650,7 +3177,31 @@ export function streamAnthropicViaBetaMessages(
         redirect: 'error',
       };
       if (options?.signal) requestInit.signal = options.signal;
-      const response = await fetch(url, requestInit);
+      const retryDetails: JsonObject = {};
+      const response = await fetchAnthropicResponse(
+        url,
+        requestInit,
+        maxRetries,
+        timeoutMs,
+        (retry, code, delayMs) => {
+          if (retry === 1) {
+            output.diagnostics ??= [];
+            output.diagnostics.push({
+              type: 'anthropic-connection-retry',
+              timestamp: Date.now(),
+              details: retryDetails,
+            });
+          }
+          // One bounded diagnostic, not an unbounded per-attempt log. No request,
+          // account, credentials, or arbitrary exception text is copied into it.
+          Object.assign(retryDetails, {
+            retries_scheduled: retry,
+            retry_limit: maxRetries,
+            last_connection_code: code,
+            last_delay_ms: delayMs,
+          });
+        },
+      );
       await options?.onResponse?.(
         { status: response.status, headers: headersToRecord(response.headers) },
         model,
@@ -2693,7 +3244,7 @@ export function streamAnthropicViaBetaMessages(
               'Anthropic beta messages stream emitted malformed/duplicate message_start',
             );
           }
-          if (typeof event['message']['id'] !== 'string' || event['message']['id'].length === 0) {
+          if (!isNonEmptyString(event['message']['id'])) {
             throw new Error('Anthropic beta messages message_start is missing a response id');
           }
           sawMessageStart = true;
@@ -3015,10 +3566,12 @@ export default function spawnAnthropicAttribution(
       streamAnthropicViaBetaMessages(
         model,
         context,
-        {
-          ...(options ?? {}),
-          cacheRetention: resolveRegisteredCacheRetention(options, getSessionOverride()),
-        },
+        model.provider === 'anthropic'
+          ? {
+              ...(options ?? {}),
+              cacheRetention: resolveRegisteredCacheRetention(options, getSessionOverride()),
+            }
+          : options,
         dependencies,
       ),
   });

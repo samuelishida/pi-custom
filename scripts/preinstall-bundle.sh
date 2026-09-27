@@ -69,7 +69,7 @@ for item in \
 	"pi-dictate|bundled/npm-packages/pi-dictate-1.0.6.tgz|sources.npm.pi-dictate.sha256" \
 	"pi-mcp-adapter|bundled/npm-packages/pi-mcp-adapter-2.32.1.tgz|sources.npm.pi-mcp-adapter.sha256" \
 	"pi-hermes-memory|bundled/npm-packages/pi-hermes-memory-0.9.8.tgz|sources.npm.pi-hermes-memory.sha256" \
-	"pi-background-tasks|bundled/npm-packages/pi-background-tasks-2.5.0.tgz|sources.npm.pi-background-tasks.sha256" \
+	"pi-background-tasks|bundled/npm-packages/pi-background-tasks-2.6.7.tgz|sources.npm.pi-background-tasks.sha256" \
 	"pi-muselinn-harness|bundled/npm-packages/pi-muselinn-harness-0.9.22.tgz|sources.npm.pi-muselinn-harness.sha256"; do
 	IFS='|' read -r name archive manifest_path <<< "$item"
 	[[ "$(sha256_file "$ROOT_DIR/$archive")" == "$(manifest_value "$manifest_path")" ]] || {

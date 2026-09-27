@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { canonicalJson } from '../attested-pi-run.js';
+import { canonicalJson } from '../canonical-json.js';
 import {
   projectVisibleConversationV2,
   type OmittedRunCounts,
@@ -100,11 +100,7 @@ function policyDescriptor(source: FusionSource): FusionContextPolicyDescriptor {
 }
 
 function compactOmissionCounts(counts: OmittedRunCounts): FusionProjectionOmissionCounts {
-  return [
-    counts.assistant_thinking ?? 0,
-    counts.tool_calls ?? 0,
-    counts.tool_result_texts ?? 0,
-  ];
+  return [counts.assistant_thinking ?? 0, counts.tool_calls ?? 0, counts.tool_result_texts ?? 0];
 }
 
 function expandOmissionCounts(counts: FusionProjectionOmissionCounts): OmittedRunCounts {
@@ -247,12 +243,12 @@ export function buildFusionCanonicalInput(
     workflow: 'reason',
     cwd: ctx.cwd,
     request,
-    system_prompt: ctx.getSystemPrompt(),
+    system_prompt: snapshot.systemPrompt,
     conversation_projection: projected.projection,
     context: {
       kind: 'session_projection',
       policy_id: 'fusion-session-projection-v1',
-      system_prompt: ctx.getSystemPrompt(),
+      system_prompt: snapshot.systemPrompt,
       conversation_projection: projected.projection,
     },
   };
