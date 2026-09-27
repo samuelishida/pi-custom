@@ -1,3 +1,6 @@
 pi-custom-bundled-distribution:
   file: pi-custom-bundled-distribution.md
   description: Read when modifying the pi-custom vendored bundle, preinstall, Bun runtime, or E2E gates.
+hipfire-pi-long-session-failures:
+  file: hipfire-pi-long-session-failures.md
+  description: Read when pi+hipfire sessions fail mid-run (terminated / 503 / retries), or when changing hipfire config, the guardrail extension, the hipfire fork, or the prefill keepalive patch.

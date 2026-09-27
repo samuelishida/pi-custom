@@ -162,3 +162,21 @@ Guardrail lines at the current formula (`reserve = min(32768 + 0.531*(window -
 - The `pi-token-speed` style display value `recent_tok_s` from `/stats` is a
   recent-window figure that a reload or an aborted request drags down; measure
   with a controlled short request instead of trusting it.
+
+## Local hipfire fork
+
+The hipfire source itself is forked at `../hipfire` (sibling of this repo), since
+the prefill keepalive is a source change and not a config one:
+
+- `master` -- pristine upstream tip (`ad10b3d`, remote `upstream` =
+  `https://github.com/warpfront/hipfire.git`)
+- `pi-custom` -- `2de3901` DFlash adaptive draft block size, then `f4d0906` the
+  prefill keepalive fix
+
+Both working-tree states are reproduced byte-for-byte from the tree this machine
+runs. Rebuild and install from there with
+`scripts/apply-hipfire-prefill-keepalive.sh` (which applies the same patch to
+`~/.hipfire/src`), or build the `pi-custom` branch directly.
+
+See `.agents/learnings/hipfire-pi-long-session-failures.md` for the full
+symptom -> cause -> fix record across all four faults.
