@@ -199,8 +199,11 @@ making `hipfire serve` unavailable until a human intervened:
    ~100-126% CPU with zero disk I/O, GPU idle, log frozen mid-layer (62/64 and
    44/64), model stuck at null, holding 11-15G of VRAM. `hipfire-watchdog.sh`
    (run every 60s by `hipfire-watchdog.timer`) detects that signature --
-   daemon in R state with I/O AND log frozen across a 30s window, twice in a
-   row -- and restarts the unit, with a 300s backoff so it never thrashes.
+   daemon in R state with I/O AND log frozen across a 30s window, confirmed by
+   a second 20s sample in the same run -- then does a CLEAN restart (stop, wait
+   for the GPU to release the VRAM, start), with a 120s backoff so it never
+   thrashes. Observed detection-to-recovery: ~50s, VRAM back to 26 MiB before
+   the new load starts.
 
 The watchdog also retries a `failed` unit (reset-failed + start) but NEVER
 starts an inactive one: the hipfire-lifecycle extension stops the unit

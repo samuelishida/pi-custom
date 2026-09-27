@@ -9,18 +9,21 @@
 #      the unit lands in "failed". serve-preclean.sh v2 fixes the cause; this
 #      watchdog clears and retries a failed unit so nobody has to do it by hand.
 #
-#   2. LOADER WEDGES. Twice in one day the daemon's main thread spun at
-#      ~100-126% CPU with ZERO disk I/O, GPU idle, log frozen mid-layer
-#      (62/64 once, 44/64 once), model stuck at null, holding 11-15G VRAM.
-#      Recoverable only by restarting the unit. Signature used here: daemon in
-#      R state with I/O and log both frozen across a 30s window, twice in a row.
+#   2. LOADER WEDGES. Repeatedly the daemon's main thread spins at ~60-126% CPU
+#      with ZERO disk I/O (no read() syscalls at all), GPU idle, log frozen
+#      mid-layer (62/64, 49/64, 48/64, 44/64, 33/64 observed), model stuck at
+#      null, holding 11-15G VRAM. Only a restart clears it. Signature used here:
+#      daemon in R state with I/O and log both frozen, confirmed twice in the
+#      same run, then a CLEAN restart (stop -> wait for the GPU to release the
+#      VRAM -> start), because reloading onto a GPU the wedged process has just
+#      let go of is how you get a second wedge.
 #
-#   3. COLD FIRST REQUESTS. With the model unloaded, the first user request
-#      pays a full ~90s load inside admission (before any response headers), so
-#      pi hangs for minutes and the user aborts. The unit prewarms on start, but
-#      if that prewarm was cancelled the model never becomes resident. When the
-#      unit is up, idle, and the model is null, we warm it with a 1-token
-#      request so the next real request is instant.
+#   3. COLD FIRST REQUESTS. With the model unloaded, the first user request pays
+#      a full ~90s load inside admission (before any response headers), so pi
+#      hangs for minutes and the user aborts. The unit prewarms on start; if
+#      that prewarm was cancelled the model never becomes resident. When the
+#      unit is up, idle, nothing is loading, and the model is null, we warm it
+#      with a 1-token request so the next real request is instant.
 #
 # With --idle-timeout 0 the mid-session unload/reload churn (25 idle unloads in
 # serve.log, each a wedge opportunity) is gone, so this watchdog plus prewarm
@@ -34,7 +37,8 @@ LOG="$HOME/.hipfire/serve.log"
 STATE="$HOME/.hipfire/watchdog.state"
 NOTE="$HOME/.hipfire/watchdog.log"
 WEDGE_WINDOW_S=30
-RESTART_BACKOFF_S=300
+WEDGE_CONFIRM_S=20
+RESTART_BACKOFF_S=120
 
 say() { echo "$(date -u +%FT%TZ) $*" >>"$NOTE"; }
 
@@ -47,9 +51,47 @@ except Exception:
     print("None")' "$2" 2>/dev/null
 }
 
-# 1. A deliberately stopped unit is "inactive" -- the hipfire-lifecycle
-#    extension stops it to free VRAM, and we must NOT fight that. Only a unit
-#    that FAILED to start gets retried.
+# Highest VRAM used across the DRM cards, in bytes (0 if unreadable).
+vram_used() {
+	local max=0 v
+	for f in /sys/class/drm/card*/device/mem_info_vram_used; do
+		[ -r "$f" ] || continue
+		v=$(cat "$f" 2>/dev/null || echo 0)
+		[ "$v" -gt "$max" ] 2>/dev/null && max=$v
+	done
+	echo "$max"
+}
+
+# Stop, wait for the GPU to actually let go of the wedged daemon's VRAM, then
+# start.
+restart_clean() {
+	systemctl --user stop "$UNIT" 2>/dev/null || true
+	local i
+	for i in $(seq 1 40); do
+		[ "$(vram_used)" -lt 536870912 ] && break
+		sleep 1
+	done
+	say "vram after stop: $(( $(vram_used) / 1048576 )) MiB"
+	systemctl --user start "$UNIT" 2>/dev/null || say "start after clean stop FAILED"
+}
+
+# One frozen sample of the daemon: prints "frozen" when the pid's I/O counters
+# AND serve.log are unchanged after $1 seconds while the process is running.
+sample_daemon() {
+	local pid=$1 secs=$2 io1 log1 state io2 log2
+	io1=$(grep -E '^(rchar|read_bytes)' "/proc/$pid/io" 2>/dev/null)
+	log1=$(wc -l <"$LOG" 2>/dev/null)
+	state=$(ps -p "$pid" -o stat= 2>/dev/null | tr -d ' ')
+	sleep "$secs"
+	io2=$(grep -E '^(rchar|read_bytes)' "/proc/$pid/io" 2>/dev/null)
+	log2=$(wc -l <"$LOG" 2>/dev/null)
+	[ -n "$io1" ] && [ "$io1" = "$io2" ] && [ "$log1" = "$log2" ] &&
+		[ "${state:0:1}" = "R" ] && echo frozen
+}
+
+# 1. A deliberately stopped unit is "inactive" -- the hipfire-lifecycle extension
+#    stops it to free VRAM, and we must NOT fight that. Only a unit that FAILED
+#    to start gets retried.
 if systemctl --user is-failed --quiet "$UNIT" 2>/dev/null; then
 	say "unit in failed state -> reset-failed + start"
 	systemctl --user reset-failed "$UNIT"
@@ -72,51 +114,54 @@ fi
 [ "$queue" = "None" ] && queue=0
 [ "$queue" -gt 0 ] && exit 0
 
-# 4. Wedge detection: daemon spinning (R state) with I/O AND log frozen.
+# 4. Wedge detection: daemon spinning (R) with I/O AND log frozen, confirmed
+#    twice within this run so a merely CPU-slow load is not mistaken for a wedge.
 main=$(systemctl --user show "$UNIT" -p MainPID --value 2>/dev/null)
 daemon=$(pgrep -P "${main:-0}" 2>/dev/null | head -1)
 if [ -n "${daemon:-}" ] && [ -r "/proc/$daemon/io" ]; then
-	io1=$(grep -E '^(rchar|read_bytes)' "/proc/$daemon/io" 2>/dev/null)
-	log1=$(wc -l <"$LOG" 2>/dev/null)
-	state1=$(ps -p "$daemon" -o stat= 2>/dev/null | tr -d ' ')
-	sleep "$WEDGE_WINDOW_S"
-	io2=$(grep -E '^(rchar|read_bytes)' "/proc/$daemon/io" 2>/dev/null)
-	log2=$(wc -l <"$LOG" 2>/dev/null)
-	state2=$(ps -p "$daemon" -o stat= 2>/dev/null | tr -d ' ')
-
-	if [ "$io1" = "$io2" ] && [ "$log1" = "$log2" ] &&
-		[ "${state1:0:1}" = "R" ] && [ "${state2:0:1}" = "R" ]; then
+	if [ "$(sample_daemon "$daemon" "$WEDGE_WINDOW_S")" = frozen ]; then
 		n=$(( $(cat "$STATE" 2>/dev/null || echo 0) + 1 ))
 		echo "$n" >"$STATE"
-		# 4a. A load that is merely CPU-slow can freeze the log for a while;
-		#     require two consecutive sightings before restarting.
-		if [ "$n" -lt 2 ]; then
-			say "possible loader wedge (daemon $daemon, R + I/O/log frozen ${WEDGE_WINDOW_S}s) - sighting 1"
+		say "frozen sample 1 of 2 (daemon $daemon, R + I/O/log frozen ${WEDGE_WINDOW_S}s)"
+		if [ "$(sample_daemon "$daemon" "$WEDGE_CONFIRM_S")" = frozen ]; then
+			now=$(date +%s)
+			last=$(cat "$HOME/.hipfire/watchdog.lastrestart" 2>/dev/null || echo 0)
+			if [ $((now - last)) -lt "$RESTART_BACKOFF_S" ]; then
+				say "loader wedge confirmed (daemon $daemon) but restart backed off (<${RESTART_BACKOFF_S}s)"
+				exit 0
+			fi
+			date +%s >"$HOME/.hipfire/watchdog.lastrestart"
+			say "loader wedge confirmed (daemon $daemon spinning, I/O + log frozen) -> clean restart"
+			echo 0 >"$STATE"
+			restart_clean
 			exit 0
 		fi
-		# 4b. Back off: never restart more often than every RESTART_BACKOFF_S.
-		now=$(date +%s)
-		last=$(cat "$HOME/.hipfire/watchdog.lastrestart" 2>/dev/null || echo 0)
-		if [ $((now - last)) -lt "$RESTART_BACKOFF_S" ]; then
-			say "loader wedge confirmed (daemon $daemon) but restart backed off (<${RESTART_BACKOFF_S}s)"
-			exit 0
-		fi
-		date +%s >"$HOME/.hipfire/watchdog.lastrestart"
-		say "loader wedge confirmed (daemon $daemon spinning, I/O + log frozen ${WEDGE_WINDOW_S}s) -> restart"
-		echo 0 >"$STATE"
-		systemctl --user restart "$UNIT" || say "restart FAILED"
-		exit 0
 	fi
-	# 4c. Movement happened (a load in progress): healthy, clear sightings.
+	# Movement seen: a load is in progress. Healthy.
 	echo 0 >"$STATE"
-	[ "$log1" != "$log2" ] && exit 0
+	exit 0
 fi
 
-# 5. Up, idle, model null: warm it so the next user request pays no load.
-#    Foreground (not backgrounded): a backgrounded curl would be killed with
-#    the oneshot service's cgroup when this script exits, cancelling the load
-#    mid-flight -- the exact failure mode we are trying to prevent.
+# 5. No daemon pid found. Nothing to warm for a service that is starting up.
+[ -z "${daemon:-}" ] && exit 0
+
+# 6. Up, idle, model null, nothing loading: warm it so the next user request
+#    pays no ~90s load. The tail of serve.log is the reliable "is a load in
+#    progress" signal: a running or stalled load leaves "loading layer N/64" as
+#    the tail, and firing a duplicate request mid-load is a plausible trigger
+#    for the cancel/reload that leaves the daemon wedged (2026-09-27).
+if tail -n 400 "$LOG" 2>/dev/null | grep -avE "DFlash adaptive-B" | tail -1 | grep -q "loading  *layer"; then
+	exit 0
+fi
+now=$(date +%s)
+last=$(cat "$HOME/.hipfire/watchdog.lastwarm" 2>/dev/null || echo 0)
+if [ $((now - last)) -lt 600 ]; then
+	exit 0
+fi
+date +%s >"$HOME/.hipfire/watchdog.lastwarm"
 say "unit up, model not resident, idle -> warming"
+# Foreground (not backgrounded): systemd kills the service's cgroup when the
+# script exits, which would cancel a backgrounded load mid-flight.
 curl -s --max-time 420 -H 'Content-Type: application/json' \
 	-d '{"model":"qwen3.8:27b-mq4-xt","messages":[{"role":"user","content":"warm"}],"max_tokens":1,"stream":false}' \
 	"$WARM" >/dev/null 2>&1 || true

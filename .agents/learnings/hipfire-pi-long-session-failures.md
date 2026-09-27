@@ -135,3 +135,46 @@ Read before changing: `~/.hipfire/config.toml`, `~/.pi/agent/models.json`,
 `~/.pi/agent/settings.json`, `~/.pi/agent/extensions/guardrail.ts`,
 `PiCode/bundled/hipfire/*`, or anything about long-session `terminated` /
 `503` failures on the pi + hipfire stack.
+
+## Loader wedge: the busy-wait on a lost GPU completion (2026-09-27)
+
+Symptom: the daemon stops making progress mid-load at an arbitrary layer
+(62/64, 49/64, 48/64, 44/64, 33/64 all observed), holding 11-15G VRAM, model
+stuck at null, GPU idle. `/proc/<pid>/io` shows rchar and read_bytes FROZEN --
+not even page-cache reads -- so the loader is not reading the model file, and
+neither is it blocked: `ps` says `Rl` at 60-126% CPU.
+
+The decisive evidence came from thread wait channels (readable without ptrace):
+
+    tid 2386536  R  daemon  0                    <- main thread, wchan 0
+    tid 2386544  S  daemon  kfd_wait_on_events
+    tid 2386545  S  daemon  kfd_wait_on_events
+    tid 2386557  S  daemon  anon_pipe_read
+
+`wchan 0` on a running thread means it is spinning in userspace, not sitting in
+a syscall. The two `kfd_wait_on_events` threads are HSA signal waits
+(`hsa_signal_wait_scacquire`, crates/hsa-bridge/src/lib.rs:389) blocked on the
+AMD KFD driver. So the loader is polling for GPU completion of a layer's work
+while the driver never delivers that completion. The GPU is idle, so the work
+is not slow -- the event is lost.
+
+Do NOT waste time looking for this in the Rust sources as a spin loop: the
+userspace spin lives inside the HSA/ROCm runtime, and the missing signal never
+appears in hipfire's own code. It is a driver/runtime-level failure. Recovering
+requires restarting the process; a bounded timeout on the load's GPU wait (or a
+driver-level reset) would be the real fix and is a fork-level project.
+
+Because the wedge is timing-dependent it is flaky, and it got *more* frequent
+over a day of repeated load/unload cycles, so a service that reloads its model
+often is much more exposed than one that loads once and stays resident. That is
+the real argument for `--idle-timeout 0` plus a prewarm: not VRAM, but the fact
+that every load is a fresh chance to lose an event.
+
+Operational answer (shipped): a systemd timer runs hipfire-watchdog.sh every
+60s. It detects the wedge as R state + frozen I/O + frozen log, confirmed by a
+second sample in the same run, then does a clean restart (stop, wait for VRAM to
+drop, start). It also retries a FAILED unit but never starts a deliberately
+stopped one, so the hipfire-lifecycle extension can still free the GPU, and it
+warms the model only when idle with no load in progress (never during a load --
+a duplicate request mid-load is itself a plausible trigger for the cancel/
+reload cycle that leaves the daemon wedged).
