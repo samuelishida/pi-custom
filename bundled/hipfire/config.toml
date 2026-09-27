@@ -5,6 +5,13 @@ max_tokens = 16384
 
 [serve]
 queue_timeout_ms = 300000
+# Bare `hipfire serve` / `hipfire restart` (no --model flag) resolve these from
+# config. Their schema defaults are qwen3.5:9b, 0.0.0.0 and 300s, which do NOT
+# match the systemd unit: pinning them here means a manual CLI invocation loads
+# the same model on the same address with the same idle policy as the unit.
+default_model = "qwen3.8:27b-mq4-xt"
+host = "127.0.0.1"
+idle_timeout_seconds = 0
 
 [generation]
 # Per-turn generation cap. Must exceed [reasoning] max_tokens
