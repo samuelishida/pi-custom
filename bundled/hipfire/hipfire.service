@@ -35,7 +35,7 @@ Environment=HIPFIRE_DFLASH_MODE=auto
 Environment=HIPFIRE_DFLASH_DRAFT=/media/smk/Models/hipFire/qwen38-27b-dflash-mq4.hfq
 # gfx11 iu4-direct MMQ prefill: +7.6% at 88K, +32% at short prefills.
 Environment=HIPFIRE_GFX11_MQ4V2_IU4=1
-ExecStart=/bin/bash -c '/home/smk/.hipfire/bin/hipfire serve qwen3.8:27b-mq4-xt 127.0.0.1 11435 -d --kv-mode q8 --idle-timeout 600 && sleep 1 && /home/smk/.hipfire/bin/serve-pid.sh > %t/hipfire.pid'
+ExecStart=/bin/bash -c '/home/smk/.hipfire/bin/hipfire serve qwen3.8:27b-mq4-xt 127.0.0.1 11435 -d --kv-mode q8 --idle-timeout 0 && sleep 1 && /home/smk/.hipfire/bin/serve-pid.sh > %t/hipfire.pid'
 ExecStop=/home/smk/.hipfire/bin/hipfire stop --force
 ExecStopPost=/bin/rm -f %t/hipfire.pid
 TimeoutStartSec=1800

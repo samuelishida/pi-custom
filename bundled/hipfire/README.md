@@ -180,3 +180,41 @@ runs. Rebuild and install from there with
 
 See `.agents/learnings/hipfire-pi-long-session-failures.md` for the full
 symptom -> cause -> fix record across all four faults.
+
+## Lifecycle: preclean + watchdog
+
+Two operational failure classes were observed on this box (2026-09-27), both
+making `hipfire serve` unavailable until a human intervened:
+
+1. **Start races.** After a stop, the reaped daemon pid can linger briefly as
+   a zombie; `kill -0` succeeds on a zombie, so a fresh start dies with
+   `FATAL: hipfire daemon already running (PID N)` and the unit lands in
+   `failed`. `serve-preclean.sh` (ExecStartPre) now covers BOTH pid records
+   (`daemon.pid` and `serve.pid`), verifies the pid really belongs to hipfire
+   before killing (pid reuse must not kill an unrelated process), waits for the
+   pid to fully disappear from `/proc` rather than merely get signalled, frees
+   the port, and drops the stale records.
+
+2. **Loader wedges.** Twice in one day the daemon's main thread spun at
+   ~100-126% CPU with zero disk I/O, GPU idle, log frozen mid-layer (62/64 and
+   44/64), model stuck at null, holding 11-15G of VRAM. `hipfire-watchdog.sh`
+   (run every 60s by `hipfire-watchdog.timer`) detects that signature --
+   daemon in R state with I/O AND log frozen across a 30s window, twice in a
+   row -- and restarts the unit, with a 300s backoff so it never thrashes.
+
+The watchdog also retries a `failed` unit (reset-failed + start) but NEVER
+starts an inactive one: the hipfire-lifecycle extension stops the unit
+deliberately to free VRAM, and the watchdog must not fight that.
+
+It warms the model when the unit is up, idle, and the model is null, so the
+first user request pays no ~90s load inside admission (where no response
+headers exist yet and nothing can keep a client alive).
+
+`--idle-timeout 0` (in hipfire.service) removes the mid-session
+unload/reload churn -- 25 idle unloads are recorded in serve.log, and each
+reload is a fresh opportunity for the loader wedge. The cost is that VRAM
+stays held while hipfire runs; that is fine here because the pi memory route
+(memllm) uses a cloud model and hipfire-lifecycle still stops the unit on
+model switch.
+
+Watchdog log: `~/.hipfire/watchdog.log`.

@@ -1,0 +1,10 @@
+[Unit]
+Description=hipfire watchdog: retry failed starts, self-heal loader wedges, keep the model resident
+Documentation=https://github.com/warpfront/hipfire
+
+[Service]
+Type=oneshot
+ExecStart=%h/.hipfire/bin/hipfire-watchdog.sh
+# The wedge check sleeps 30s and a warm load can take minutes; the timer simply
+# skips ticks while a run is active.
+TimeoutStartSec=15min

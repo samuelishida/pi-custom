@@ -67,6 +67,14 @@ install_file() {
 
 install_file "$SRC/config.toml" "$HIPFIRE_DIR/config.toml" "hipfire config.toml"
 install_file "$SRC/hipfire.service" "$SYSTEMD_DIR/hipfire.service" "hipfire.service"
+# ExecStartPre: clears stale serve/daemon pid records (a zombie still answers
+# kill -0, which makes `hipfire serve` die with "already running").
+install_file "$SRC/serve-preclean.sh" "$HIPFIRE_DIR/bin/serve-preclean.sh" "serve-preclean.sh"
+# Watchdog: retries failed starts, self-heals loader wedges, keeps the model
+# resident. Units land in systemd; the timer is enabled below.
+install_file "$SRC/hipfire-watchdog.sh" "$HIPFIRE_DIR/bin/hipfire-watchdog.sh" "hipfire-watchdog.sh"
+install_file "$SRC/hipfire-watchdog.service" "$SYSTEMD_DIR/hipfire-watchdog.service" "hipfire-watchdog.service"
+install_file "$SRC/hipfire-watchdog.timer" "$SYSTEMD_DIR/hipfire-watchdog.timer" "hipfire-watchdog.timer"
 
 # ---- models.json: merge only the maxTokens fields ------------------------
 # Never clobber the user's model catalog; it accumulates providers and edits.
@@ -137,6 +145,8 @@ NODE
 	fi
 }
 
+chmod +x "$HIPFIRE_DIR/bin/serve-preclean.sh" "$HIPFIRE_DIR/bin/hipfire-watchdog.sh" 2>/dev/null || true
+
 run_models_step
 
 # ---- systemd -------------------------------------------------------------
@@ -145,6 +155,11 @@ if [[ "$MODE" == apply ]] && command -v systemctl >/dev/null 2>&1; then
 		echo "      systemd daemon-reload: ok"
 	else
 		echo "      systemd daemon-reload: skipped (no user session?)"
+	fi
+	if systemctl --user enable --now hipfire-watchdog.timer >/dev/null 2>&1; then
+		echo "      hipfire-watchdog.timer: enabled"
+	else
+		echo "      hipfire-watchdog.timer: could not enable (no user session?)"
 	fi
 fi
 
