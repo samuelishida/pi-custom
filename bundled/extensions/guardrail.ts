@@ -25,6 +25,19 @@ type ActiveModel = { id: string; baseUrl?: string; provider?: string; contextWin
 /** Native (non-`/v1`) Ollama HTTP endpoint; absolute fallback matches 127.0.0.1/localhost:11434. */
 const OLLAMA_BASE = /^https?:\/\/(127\.0\.0\.1|localhost|0\.0\.0\.0)(:\d+)?\/?$/i;
 
+/** hipfire cold-prefill safety cap.
+ *
+ *  Measured on this box: a cold prefill of ~108k tokens takes ~300s, which is
+ *  exactly undici's default bodyTimeout. Above that every request is killed as
+ *  "terminated" with zero content, and every retry re-runs the same cold
+ *  prefill and dies identically. The guardrail's generic formula puts the line
+ *  at ~109k for a 163840 window, so we force hipfire to compact much earlier.
+ */
+const HIPFIRE_SAFE_LINE = 80_000;
+const isHipfire = (model?: ActiveModel): boolean =>
+  !!model &&
+  (model.provider === "hipfire" || /:11435\b/.test(model.baseUrl ?? "") || model.id?.startsWith("qwen3.8:"));
+
 /**
  * Context-dependent compaction reserve + summarization-overflow safety net.
  *
@@ -204,15 +217,20 @@ export default function guardrail(pi: ExtensionAPI) {
   // and lets us cancel pi's built-in threshold check while one is in flight.
   let compactionInFlight = false;
 
-  const reserveFor = (contextWindow: number): number => {
+  const reserveFor = (contextWindow: number, model?: ActiveModel): number => {
+    if (isHipfire(model)) {
+      // Reserve enough of the window so the dynamic line lands at the cold-
+      // prefill safety cap. (For 163840 -> reserve 83840 -> line 80000.)
+      return Math.max(0, contextWindow - HIPFIRE_SAFE_LINE);
+    }
     const linear = MIN_RESERVE_TOKENS + RESERVE_GROWTH * Math.max(0, contextWindow - BASE_WINDOW);
     // Never reserve a negative amount (tiny windows would otherwise push the
     // dynamic line past the window itself).
     return Math.min(Math.floor(Math.max(0, linear)), Math.floor(contextWindow * MAX_FRACTION));
   };
 
-  const dynamicLine = (contextWindow: number): number =>
-    contextWindow - reserveFor(contextWindow);
+  const dynamicLine = (contextWindow: number, model?: ActiveModel): number =>
+    contextWindow - reserveFor(contextWindow, model);
 
   /** Estimate tokens the built-in summarizer would send for these messages. */
   const estimateSummaryTokens = (
@@ -259,7 +277,7 @@ export default function guardrail(pi: ExtensionAPI) {
     const w = await effectiveWindow(model);
     if (w && w > 0) {
       ctx.ui?.notify?.(
-        `guardrail: real num_ctx=${w} (pi=${model.contextWindow ?? "?"}) -> compact at ~${Math.round(dynamicLine(w) / 1000)}k`,
+        `guardrail: real num_ctx=${w} (pi=${model.contextWindow ?? "?"}) -> compact at ~${Math.round(dynamicLine(w, model) / 1000)}k${isHipfire(model) ? " [hipfire cap]" : ""}`,
         "info",
       );
     }
@@ -281,7 +299,10 @@ export default function guardrail(pi: ExtensionAPI) {
     // (e.g. 167,166 tokens into a 122,880 window). When the serialized input
     // would not fit, supply a bounded summary (no LLM call) instead.
     const summaryInputTokens = estimateSummaryTokens(prep.messagesToSummarize ?? [], prep.turnPrefixMessages ?? []);
-    if (summaryInputTokens > window * OVERFLOW_SAFE_FRACTION) {
+    // For hipfire the summarizer request itself must not exceed the cold-
+    // prefill timeout budget. Clamp the overflow guard to the safety line.
+    const overflowCeil = isHipfire(model) ? HIPFIRE_SAFE_LINE : window;
+    if (summaryInputTokens > overflowCeil * OVERFLOW_SAFE_FRACTION) {
       lastProactiveAt = Date.now();
       return {
         compaction: {
@@ -300,7 +321,7 @@ export default function guardrail(pi: ExtensionAPI) {
     if (compactionInFlight) return { cancel: true };
     const usage = ctx.getContextUsage();
     if (!usage || usage.tokens === null) return;
-    if (usage.tokens < dynamicLine(window)) {
+    if (usage.tokens < dynamicLine(window, model)) {
       lastCancelledTokens = usage.tokens;
       return { cancel: true };
     }
@@ -319,7 +340,7 @@ export default function guardrail(pi: ExtensionAPI) {
     // No progress since the last delayed compaction (e.g. right after a
     // compaction landed): don't loop.
     if (usage.tokens <= lastCancelledTokens + NO_PROGRESS_DELTA) return;
-    if (usage.tokens > dynamicLine(window)) {
+    if (usage.tokens > dynamicLine(window, model)) {
       if (compactionInFlight) return; // a compaction is already running; don't stack
       compactionInFlight = true;
       lastProactiveAt = Date.now();
@@ -360,16 +381,20 @@ export default function guardrail(pi: ExtensionAPI) {
     const model = ctx.model as ActiveModel | undefined;
     if (!usage || usage.tokens === null || !model) return;
     // Cheap floor: below the smallest possible dynamic line there is nothing
-    // to do, so we don't even touch the (cached but async) window lookup.
-    if (usage.tokens <= BASE_WINDOW - MIN_RESERVE_TOKENS) return;
+    // to do, so we don't even touch the (cached but async) window lookup. The
+    // hipfire cold-prefill cap sits BELOW the generic floor (80k < 90,112), so
+    // it must lower the floor too or the mid-run watchdog would silently never
+    // enforce the 80k line (only agent_settled would, after the run settles).
+    const floor = isHipfire(model) ? HIPFIRE_SAFE_LINE : BASE_WINDOW - MIN_RESERVE_TOKENS;
+    if (usage.tokens <= floor) return;
     const window = await effectiveWindow(model);
     if (window <= 0) return;
-    if (usage.tokens <= dynamicLine(window)) return;
+    if (usage.tokens <= dynamicLine(window, model)) return;
     if (compactionInFlight) return; // never start a second concurrent compaction
     compactionInFlight = true;
     lastProactiveAt = Date.now(); // blocks the agent_settled path from double-firing
     ctx.ui?.notify?.(
-      `guardrail: context ${Math.round(usage.tokens / 1000)}k crossed the ${Math.round(dynamicLine(window) / 1000)}k line mid-run; compacting now`,
+      `guardrail: context ${Math.round(usage.tokens / 1000)}k crossed the ${Math.round(dynamicLine(window, model) / 1000)}k line mid-run; compacting now`,
       "warn",
     );
     ctx.compact({
@@ -603,6 +628,12 @@ export default function guardrail(pi: ExtensionAPI) {
   let stallActive = false;
   let stallRetries = 0; // per-run stall-retry budget (reset on agent_settled)
   let hungToolAborts = 0; // per-run budget for aborting hung tool calls
+  // Names of tools whose run we aborted. The resume steer is sent from the
+  // agent_settled handler, NOT immediately after abort(), because the immediate
+  // path raced the abort teardown: the fresh turn came back instantly as
+  // `stopReason: "error", errorMessage: "This operation was aborted"` and the
+  // task died instead of continuing.
+  let pendingHangResume = "";
   let stallTimer: ReturnType<typeof setInterval> | undefined;
   // In-flight tool calls (tool_execution_start but no matching end yet). A
   // stale one means the agent is blocked waiting on a crashed/hung function.
@@ -718,38 +749,25 @@ export default function guardrail(pi: ExtensionAPI) {
           );
           // Unblock the stuck tool, then give control back to the model.
           // NOTE: capture ctx BEFORE stallEnd() — stallEnd() nulls the shared
-          // stallCtx, so reading it in the resume IIFE below used to throw
-          // (TypeError: reading 'waitForIdle' of undefined), which the empty
-          // catch swallowed: the "ask the LLM how to proceed" steer never ran
-          // and the run just died with the AbortError.
+          // stallCtx, so reading it afterwards would throw (TypeError: reading
+          // 'abort' of undefined) and the resume would never run.
           const ctxToResume = stallCtx;
           const canAbort = typeof ctxToResume?.abort === "function";
-          if (canAbort) ctxToResume.abort();
+          if (canAbort) {
+            // Defer the resume to agent_settled. abort() unwinds asynchronously
+            // and pi defers a prompt issued from agent_settled until the run has
+            // fully settled, so the new turn is not born aborted.
+            pendingHangResume = names;
+            ctxToResume.abort();
+          } else {
+            // No abort handle: nothing actually stopped, so don't claim we
+            // interrupted the call — just surface it.
+            ctxToResume?.ui?.notify?.(
+              `guardrail: tool call(s) (${names}) ran past their allowed time but could not be interrupted; leaving the run as-is`,
+              "warn",
+            );
+          }
           stallEnd();
-          const piAny = pi as any;
-          const steer = (piAny.sendUserMessage ?? piAny.sendMessage).bind(piAny);
-          void (async () => {
-            try {
-              if (canAbort) {
-                // Wait for the aborted run to settle so the re-prompt starts a
-                // fresh turn rather than queueing behind the dead one.
-                await ctxToResume.waitForIdle?.().catch(() => {});
-                steer(
-                  `[guardrail] A tool call (${names}) ran past its allowed time and was interrupted because it hung. Decide how to proceed and continue the task: retry it, wait longer, split it up, or use a different approach. Do not stop.`,
-                  { deliverAs: "steer", expandPromptTemplates: false },
-                );
-              } else {
-                // No abort handle: nothing actually stopped, so don't claim we
-                // interrupted the call — just surface it.
-                ctxToResume?.ui?.notify?.(
-                  `guardrail: tool call(s) (${names}) ran past their allowed time but could not be interrupted; leaving the run as-is`,
-                  "warn",
-                );
-              }
-            } catch {
-              /* no-op: leave control with the user */
-            }
-          })();
           return;
         }
         // Otherwise the model just produced no output (slow/thinking). Gently
@@ -806,6 +824,19 @@ export default function guardrail(pi: ExtensionAPI) {
     stallEnd();
     stallRetries = 0; // fresh stall budget for the next run
     hungToolAborts = 0; // fresh hung-tool budget for the next run
+    // Resume the run we aborted for a hung tool. Sending it here (rather than
+    // right after waitForIdle) lets pi queue the new turn until the aborted
+    // run's teardown has finished, so the turn is not born aborted.
+    if (pendingHangResume) {
+      const names = pendingHangResume;
+      pendingHangResume = "";
+      const piAny = pi as any;
+      const steer = (piAny.sendUserMessage ?? piAny.sendMessage).bind(piAny);
+      steer(
+        `[guardrail] A tool call (${names}) ran past its allowed time and was interrupted because it hung. Decide how to proceed and continue the task: retry it, wait longer, split it up, or use a different approach. Do not stop.`,
+        { deliverAs: "steer", expandPromptTemplates: false },
+      );
+    }
   });
   pi.on("session_shutdown", async () => {
     stallEnd();

@@ -10,4 +10,4 @@ queue_timeout_ms = 300000
 # Per-turn generation cap. Must exceed [reasoning] max_tokens
 # comfortably, otherwise the forced think-cap close has no room to emit
 # the closing tag and the turn fails closed (dropped stream).
-max_tokens = 32768
+max_tokens = 65536

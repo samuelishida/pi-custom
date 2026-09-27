@@ -55,13 +55,36 @@ than a configuration collision.
 omits it unless the model entry declares `maxTokens`. So the budget is set on
 both sides:
 
-- `config.toml` -> `[generation] max_tokens = 32768` (covers any client)
-- `models.json` -> the hipfire model entry's `"maxTokens": 32768` (so pi always
+- `config.toml` -> `[generation] max_tokens = 65536` (covers any client)
+- `models.json` -> the hipfire model entry's `"maxTokens": 65536` (so pi always
   states it)
 
 pi clamps this to `contextWindow - estimatedContext - 4096`, so the effective
 budget shrinks as a session grows. Auto-compaction keeps it far above the
 4096 think cap, but if the think cap is ever raised, raise the budget too.
+
+With the prompt capped at ~80k and `contextWindow = 163840`, roughly 79k tokens
+remain for the answer, so 65536 uses most of the available room. The per-turn
+budget does **not** interact with the 300s client timeout: during generation
+tokens stream continuously, so undici's idle-between-chunks timer keeps
+resetting. That timer only bites during **prefill**, when hipfire emits nothing
+(see below).
+
+## Cold-prefill cliff: cap the prompt, not the response
+
+hipfire emits one SSE chunk immediately and then stays silent for the whole
+prefill. pi's HTTP client (undici) aborts a stream that goes 300s without a
+chunk, and that 300s is undici's default `bodyTimeout` -- not a hipfire limit
+and not user-exposed. Measured cold prefills: 20k tok -> 17s, 60k -> 85s,
+90k -> 207s, 120k -> never returned. Fitting `t ~= 2.56e-8*n^2` puts 300s at
+**~108k tokens**, so any prompt above that dies deterministically as
+`terminated` with zero content, and every retry re-runs the same cold prefill.
+
+The fix is to compact well before the cliff.
+`~/.pi/agent/extensions/guardrail.ts` forces hipfire's dynamic compaction line
+to `HIPFIRE_SAFE_LINE = 80_000` (~172s cold prefill, comfortable margin).
+Without that override the extension's generic formula lands at ~109k for a
+163840 window -- right on the cliff.
 
 ## Notes
 

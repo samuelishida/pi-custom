@@ -37,7 +37,7 @@
           "input": [
             "text"
           ],
-          "maxTokens": 32768,
+          "maxTokens": 65536,
           "reasoning": true,
           "thinkingLevelMap": {
             "high": "medium",
