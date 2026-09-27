@@ -2,7 +2,6 @@
 name: researcher
 description: Gather primary evidence across papers, web sources, repos, docs, and local artifacts.
 thinking: high
-model: openrouter/z-ai/glm-5.3
 tools: read, write, edit, bash, grep, find, ls, web_search, web_fetch
 system-prompt: append
 auto-exit: true

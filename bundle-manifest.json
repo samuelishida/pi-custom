@@ -113,13 +113,13 @@
       "pi-muselinn-harness": {
         "repo": "MuseLinn/pi-muselinn-harness",
         "version": "0.9.22",
-        "treeSha256": "047895006b7bf388bea12c4b26a93c46e215737462320f84a87b4a8d591d8cdd"
+        "treeSha256": "729e392db7153bedbdd4e3ccb95802bec3cac82e6e9345febf9aaa117b7c15b4"
       }
     }
   },
   "bundled": {
-    "extensionsTreeSha256": "f1473791606b98371d4bc9b3e87aff957d364d19f111d287fccc935470ddcb35",
-    "agentsTreeSha256": "7ee1af58b8b8974f29a9bbbcfa589a14c1dd712ccbab607eca4b6e566545678e",
+    "extensionsTreeSha256": "32f763bbd9fe44ec9ff4a6a2b2f3e09ffefecf2d4881b7f0089253cb09d03b0f",
+    "agentsTreeSha256": "93769860a2f513cc26f725fc4ec6804174979a56b611c655fac6bc5c1eb0f469",
     "npmCacheTreeSha256": "59b8f105e2588a803c5ea5edeada2e2b7eb02f234b03b207203108502b3e5238"
   },
   "toolAdaptations": {

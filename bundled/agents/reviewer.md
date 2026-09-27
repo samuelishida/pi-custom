@@ -2,7 +2,6 @@
 name: reviewer
 description: Run tough but constructive internal research critique of an AI research artifact.
 thinking: high
-model: openrouter/z-ai/glm-5.3
 tools: read, write, edit, grep, find, ls, web_search, web_fetch
 system-prompt: append
 auto-exit: true

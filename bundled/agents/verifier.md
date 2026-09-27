@@ -2,7 +2,6 @@
 name: verifier
 description: Post-process a draft to add inline citations and verify every source URL.
 thinking: medium
-model: openrouter/z-ai/glm-5.3
 tools: read, bash, grep, find, ls, write, edit, web_search, web_fetch
 system-prompt: append
 auto-exit: true

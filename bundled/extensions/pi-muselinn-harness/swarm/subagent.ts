@@ -304,20 +304,29 @@ export async function runSubAgent(
     }),
   );
 
-  // Parse provider:modelId or just modelId
-  let targetProvider = "";
-  let targetModelId = task.model;
-  if (task.model.includes(":")) {
-    const [p, m] = task.model.split(":");
-    targetProvider = p;
-    targetModelId = m;
-  }
+  // Parse provider:modelId or just modelId.
+  //
+  // A model id may itself contain a colon — hipfire ships
+  // `qwen3.8:27b-mq4-xt` and ollama cloud tags end in `:cloud` — so a
+  // naive split(":") truncates the id ("hipfire:qwen3.8:27b-mq4-xt"
+  // becomes provider="hipfire", id="qwen3.8") and the lookup below can
+  // never match. Match the whole spec first, then fall back to a
+  // first-colon / first-slash provider split (mirrors
+  // index.ts:parseModelSpec).
+  const model =
+    models.find((m: any) => `${m.provider}:${m.id}` === task.model) ??
+    models.find((m: any) => `${m.provider}/${m.id}` === task.model) ??
+    models.find((m: any) => m.id === task.model) ??
+    (() => {
+      const colonIdx = task.model.indexOf(":");
+      const slashIdx = task.model.indexOf("/");
+      const sepIdx = colonIdx > 0 ? colonIdx : slashIdx;
+      if (sepIdx <= 0) return undefined;
+      const provider = task.model.substring(0, sepIdx);
+      const modelId = task.model.substring(sepIdx + 1);
+      return models.find((m: any) => m.id === modelId && m.provider === provider);
+    })();
 
-  const model = models.find((m: any) => {
-    const idMatch = m.id === targetModelId;
-    if (targetProvider) return idMatch && m.provider === targetProvider;
-    return idMatch;
-  });
   if (!model) {
     task.status = "failed";
     task.error = `Model "${task.model}" not found. Available: ${models.map((m: any) => `${m.provider}:${m.id}`).join(", ")}`;
