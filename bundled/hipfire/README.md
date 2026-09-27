@@ -221,3 +221,43 @@ stays held while hipfire runs; that is fine here because the pi memory route
 model switch.
 
 Watchdog log: `~/.hipfire/watchdog.log`.
+
+## When every load wedges: reset the GPU
+
+The watchdog heals occasional loader wedges by restarting the unit. On
+2026-09-27 the failure mode escalated: after ~17:43 **every** qwen3.8:27b-mq4-xt
+load wedged (24+ in a row) while a manual 9b load in the same session completed
+fine, and restarting hipfire stopped helping. That is driver-level state, not
+hipfire state, and no amount of restarting clears it.
+
+Two A/B tests ruled out the obvious hipfire-side suspects:
+
+* DFlash speculation off (`HIPFIRE_SPECULATION=off`, `HIPFIRE_DFLASH_MODE=off`,
+  so no draft model at all) -- still wedged.
+* `HIPFIRE_GFX11_MQ4V2_IU4=1` removed (the gfx11 iu4-direct MMQ kernel select,
+  the one unit env var the working manual 9b run did not have) -- still wedged.
+
+The display on this box is on the Intel iGPU (card1, vendor 0x8086), so the AMD
+card (card2, vendor 0x1002) is compute-only and can be reset **without touching
+the desktop session**:
+
+```sh
+systemctl --user stop hipfire                      # release /dev/kfd + renderD129
+echo 1 | sudo tee /sys/class/drm/card2/device/reset
+journalctl -k -n 20 | grep -i amdgpu               # confirm the reset happened
+systemctl --user start hipfire
+```
+
+If the sysfs reset is unavailable or does not take, reload the module instead
+(nothing but hipfire holds the AMD device):
+
+```sh
+systemctl --user stop hipfire
+sudo modprobe -r amdgpu && sudo modprobe amdgpu
+systemctl --user start hipfire
+```
+
+The watchdog gives up after `MAX_WEDGES_IN_A_ROW=3` consecutive wedges without a
+completed load, backs off for 10 minutes, and raises a desktop notification
+naming this recipe -- an endless restart loop would thrash the GPU and hide the
+cause.

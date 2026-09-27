@@ -178,3 +178,57 @@ stopped one, so the hipfire-lifecycle extension can still free the GPU, and it
 warms the model only when idle with no load in progress (never during a load --
 a duplicate request mid-load is itself a plausible trigger for the cancel/
 reload cycle that leaves the daemon wedged).
+
+## Loader wedge: when restarts stop helping (2026-09-27, evening)
+
+The wedge escalated from occasional to total: after ~17:43 every
+qwen3.8:27b-mq4-xt load wedged (24+ consecutive), while a manual 9b load in the
+same session completed normally. The last successful 27b load is provably the
+17:32:31 activation (its `weight sweep` line is the last one in serve.log; every
+`loading layer 0/64` since is followed by a restart, not a sweep).
+
+Ruled out, with the evidence that did it:
+
+* **VRAM.** models.toml already records that the VMM KV cap is virtual and free
+  at load, that load-time VRAM was ~18.5 GB of 25.75 GB, and that exceeding it
+  fails cleanly with `hipMemCreate: out of memory`. The wedge dies at 11-15 GB
+  with a spin, not an allocation error.
+* **The draft / DFlash.** `HIPFIRE_SPECULATION=off` + `HIPFIRE_DFLASH_MODE=off`
+  (daemon logs "dflash_mode=off -- skipping draft load") still wedged.
+* **`HIPFIRE_GFX11_MQ4V2_IU4=1`.** The only unit env var the working manual 9b run
+  lacked. Removed: still wedged.
+* **The daemon binary.** Unchanged since 2026-09-24 14:49; only the serve-side
+  keepalive patch was rebuilt, and the wedge is inside the daemon.
+* **Kernel cache corruption.** Nothing in ~/.hipfire_kernels/gfx10 was written
+  today (newest entry 2026-09-26 19:27), and the 17:32:31 load used it fine.
+* **Leaked KFD/GPU state.** Every entry in /sys/class/kfd/kfd/proc matched a live
+  pid; no stale entries.
+* **Driver errors.** The kernel log has no amdgpu reset, ring timeout or page
+  fault -- only benign `Freeing queue vital buffer ... queue evicted` lines at
+  each daemon teardown.
+* **A model-tag mismatch making hipfire reload per request.** pi's id
+  (`qwen3.8:27b-mq4-xt`) is exactly the daemon's tag.
+* **Stale ROCm shared memory.** The daemon holds no /dev/shm objects.
+
+What is left is GPU/driver state: the GPU sits at `sclk 42 MHz` and 18 W, i.e.
+its deepest idle state, while the daemon waits forever on a completion. The fix
+is a reset (this box can reset the compute-only AMD card without losing the
+session because the display is on the Intel iGPU; recipe in bundled/hipfire/
+README.md), not another restart.
+
+Lesson for the watchdog design: **bound the retries and escalate**. An
+unbounded "restart on wedge" loop turns a driver problem into continuous GPU
+churn and hides the real remedy. It now stops after 3 wedges without a completed
+load, backs off 10 minutes, and sends a desktop notification with the reset
+command.
+
+Also learned: `/health` exposes `loading_model`, which is a far better signal
+than sniffing serve.log -- `model` non-null means resident, `loading_model`
+non-null means a load is in progress, both empty means genuinely idle. The
+hotswap path uses it, and it is why the extension can now say "stuck loading X"
+instead of "still prewarming".
+
+Watch out for mmap: model weights are mmap'd, so layer reads are page faults and
+do **not** move `rchar`. A frozen `rchar` is therefore not by itself proof of a
+wedge; the log failing to advance while the daemon spins in R state is the
+evidence that matters.

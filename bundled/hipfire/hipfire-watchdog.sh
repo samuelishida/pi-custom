@@ -1,54 +1,74 @@
 #!/usr/bin/env bash
-# hipfire watchdog: retry failed starts, self-heal loader wedges, keep the
-# model resident. Run by hipfire-watchdog.timer (every 60s).
+# hipfire watchdog: retry failed starts, self-heal loader wedges, keep the model
+# resident -- and STOP and say so when the GPU itself needs a reset.
+#
+# Run by hipfire-watchdog.timer every 60s.
 #
 # Failure classes seen on this box (2026-09-27):
 #
-#   1. START RACES. After a stop, a stale/zombie daemon pid makes
-#      `hipfire serve` exit with "FATAL: hipfire daemon already running" and
-#      the unit lands in "failed". serve-preclean.sh v2 fixes the cause; this
-#      watchdog clears and retries a failed unit so nobody has to do it by hand.
+#   1. START RACES. A stale/zombie daemon pid makes `hipfire serve` exit with
+#      "FATAL: hipfire daemon already running" and the unit lands in "failed".
+#      serve-preclean.sh v2 fixes the cause; this watchdog retries a failed unit.
 #
-#   2. LOADER WEDGES. Repeatedly the daemon's main thread spins at ~60-126% CPU
-#      with ZERO disk I/O (no read() syscalls at all), GPU idle, log frozen
-#      mid-layer (62/64, 49/64, 48/64, 44/64, 33/64 observed), model stuck at
-#      null, holding 11-15G VRAM. Only a restart clears it. Signature used here:
-#      daemon in R state with I/O and log both frozen, confirmed twice in the
-#      same run, then a CLEAN restart (stop -> wait for the GPU to release the
-#      VRAM -> start), because reloading onto a GPU the wedged process has just
-#      let go of is how you get a second wedge.
+#   2. LOADER WEDGES. The daemon's main thread spins at 60-126% CPU with ZERO
+#      read syscalls, GPU idle at its lowest clock (42 MHz), log frozen mid-layer
+#      (62/64, 54, 53, 49, 48, 44, 33, 10 all seen), model stuck at null, holding
+#      11-15G VRAM. Thread wait channels show the main thread spinning in
+#      userspace (wchan 0) while two threads sit in kfd_wait_on_events: a GPU
+#      completion that never arrives. Only a process restart clears it.
 #
-#   3. COLD FIRST REQUESTS. With the model unloaded, the first user request pays
-#      a full ~90s load inside admission (before any response headers), so pi
-#      hangs for minutes and the user aborts. The unit prewarms on start; if
-#      that prewarm was cancelled the model never becomes resident. When the
-#      unit is up, idle, nothing is loading, and the model is null, we warm it
-#      with a 1-token request so the next real request is instant.
+#      NOTE on the "zero I/O" signal: model weights are mmap'd, so layer reads
+#      are page faults and do not move rchar. rchar freezing therefore does NOT
+#      by itself prove a wedge -- the log failing to advance while the daemon
+#      spins in R state is the load-bearing evidence, and it is why this script
+#      confirms with a second sample before acting.
+#
+#   3. DEGRADED GPU STATE. When wedges repeat and no load can complete, restarting
+#      hipfire stops helping: that is a driver-level state problem, and the fix is
+#      a GPU reset, not another restart. This watchdog gives up after
+#      MAX_WEDGES_IN_A_ROW attempts, backs off, and tells the user what to run --
+#      an endless restart loop would just hold the GPU hostage and hide the cause.
+#
+#   4. COLD FIRST REQUESTS. With the model unloaded, the first request pays a full
+#      ~90s load inside admission, before any response headers exist, so pi hangs
+#      and the user aborts. When the unit is up, idle, nothing is loading and no
+#      model is resident, we warm it with a 1-token request.
 #
 # With --idle-timeout 0 the mid-session unload/reload churn (25 idle unloads in
-# serve.log, each a wedge opportunity) is gone, so this watchdog plus prewarm
-# covers the remaining window: service starts.
+# serve.log, each a wedge opportunity) is gone, so prewarm + this watchdog cover
+# the remaining window: service starts.
 set -uo pipefail
 
 UNIT=hipfire.service
-STATS=http://127.0.0.1:11435/stats
+HEALTH=http://127.0.0.1:11435/health
 WARM=http://127.0.0.1:11435/v1/chat/completions
 LOG="$HOME/.hipfire/serve.log"
 STATE="$HOME/.hipfire/watchdog.state"
 NOTE="$HOME/.hipfire/watchdog.log"
+FAILS="$HOME/.hipfire/watchdog.wedgefails"
 WEDGE_WINDOW_S=30
 WEDGE_CONFIRM_S=20
 RESTART_BACKOFF_S=120
+MAX_WEDGES_IN_A_ROW=3
+GIVE_UP_BACKOFF_S=600
+WARM_COOLDOWN_S=600
 
 say() { echo "$(date -u +%FT%TZ) $*" >>"$NOTE"; }
 
-jsonget() { # $1=json $2=key
+# Desktop notification, best effort: a systemd --user service normally has the
+# session bus, but a headless run may not.
+desktop_notify() {
+	command -v notify-send >/dev/null 2>&1 || return 0
+	notify-send -u "${2:-normal}" "hipfire" "$1" >/dev/null 2>&1 || true
+}
+
+jsonfield() { # $1=json $2=key
 	printf '%s' "$1" | /usr/bin/python3 -c 'import json,sys
 try:
-    d=json.load(sys.stdin); v=d.get(sys.argv[1])
-    print("None" if v is None else v)
+    v=json.load(sys.stdin).get(sys.argv[1])
+    print("" if v is None else v)
 except Exception:
-    print("None")' "$2" 2>/dev/null
+    print("")' "$2" 2>/dev/null
 }
 
 # Highest VRAM used across the DRM cards, in bytes (0 if unreadable).
@@ -63,7 +83,8 @@ vram_used() {
 }
 
 # Stop, wait for the GPU to actually let go of the wedged daemon's VRAM, then
-# start.
+# start. Reloading instantly onto a GPU the hung process has just let go of is
+# how you get a second wedge.
 restart_clean() {
 	systemctl --user stop "$UNIT" 2>/dev/null || true
 	local i
@@ -75,8 +96,8 @@ restart_clean() {
 	systemctl --user start "$UNIT" 2>/dev/null || say "start after clean stop FAILED"
 }
 
-# One frozen sample of the daemon: prints "frozen" when the pid's I/O counters
-# AND serve.log are unchanged after $1 seconds while the process is running.
+# Prints "frozen" when the daemon's I/O counters AND serve.log are unchanged
+# after $2 seconds while the process is in R state.
 sample_daemon() {
 	local pid=$1 secs=$2 io1 log1 state io2 log2
 	io1=$(grep -E '^(rchar|read_bytes)' "/proc/$pid/io" 2>/dev/null)
@@ -100,68 +121,70 @@ if systemctl --user is-failed --quiet "$UNIT" 2>/dev/null; then
 fi
 systemctl --user is-active --quiet "$UNIT" || exit 0
 
-stats=$(curl -s --max-time 5 "$STATS") || exit 0
-model=$(jsonget "$stats" model)
-queue=$(jsonget "$stats" queue_depth)
+health=$(curl -s --max-time 5 "$HEALTH") || exit 0
+model=$(jsonfield "$health" model)
+loading=$(jsonfield "$health" loading_model)
 
-# 2. Model resident: healthy. Clear wedge sightings.
-if [ "$model" != "None" ]; then
+# 2. Resident model: healthy. Clear the wedge streak.
+if [ -n "$model" ]; then
 	echo 0 >"$STATE" 2>/dev/null
+	echo 0 >"$FAILS" 2>/dev/null
 	exit 0
 fi
 
-# 3. Model is null. If a request is queued, hipfire is working on it -- hands off.
-[ "$queue" = "None" ] && queue=0
-[ "$queue" -gt 0 ] && exit 0
-
-# 4. Wedge detection: daemon spinning (R) with I/O AND log frozen, confirmed
-#    twice within this run so a merely CPU-slow load is not mistaken for a wedge.
+# 3. Wedge detection: spinner (R) with log and I/O frozen, confirmed twice in the
+#    same run so a merely slow layer load is not mistaken for a wedge.
 main=$(systemctl --user show "$UNIT" -p MainPID --value 2>/dev/null)
 daemon=$(pgrep -P "${main:-0}" 2>/dev/null | head -1)
 if [ -n "${daemon:-}" ] && [ -r "/proc/$daemon/io" ]; then
 	if [ "$(sample_daemon "$daemon" "$WEDGE_WINDOW_S")" = frozen ]; then
-		n=$(( $(cat "$STATE" 2>/dev/null || echo 0) + 1 ))
-		echo "$n" >"$STATE"
-		say "frozen sample 1 of 2 (daemon $daemon, R + I/O/log frozen ${WEDGE_WINDOW_S}s)"
+		echo $(( $(cat "$STATE" 2>/dev/null || echo 0) + 1 )) >"$STATE"
+		say "frozen sample 1 of 2 (daemon $daemon, R + log frozen ${WEDGE_WINDOW_S}s, loading='${loading}')"
 		if [ "$(sample_daemon "$daemon" "$WEDGE_CONFIRM_S")" = frozen ]; then
 			now=$(date +%s)
 			last=$(cat "$HOME/.hipfire/watchdog.lastrestart" 2>/dev/null || echo 0)
-			if [ $((now - last)) -lt "$RESTART_BACKOFF_S" ]; then
+			fails=$(cat "$FAILS" 2>/dev/null || echo 0)
+			fails=$((fails + 1))
+			echo "$fails" >"$FAILS"
+
+			# 3a. Streak too long: stop restarting and name the real remedy. An
+			#     infinite restart loop would thrash the GPU and bury the cause.
+			if [ "$fails" -gt "$MAX_WEDGES_IN_A_ROW" ]; then
+				if [ $((now - last)) -lt "$GIVE_UP_BACKOFF_S" ]; then
+					say "wedge ${fails} in a row without a completed load - backing off (${GIVE_UP_BACKOFF_S}s)"
+					exit 0
+				fi
+				say "wedge ${fails} in a row without a completed load - GPU/driver state looks degraded, retrying once after backoff"
+				desktop_notify "hipfire cannot finish a model load (${fails} wedges in a row). The AMD GPU/driver state needs a reset: systemctl --user stop hipfire; echo 1 | sudo tee /sys/class/drm/card2/device/reset; systemctl --user start hipfire" critical
+			elif [ $((now - last)) -lt "$RESTART_BACKOFF_S" ]; then
 				say "loader wedge confirmed (daemon $daemon) but restart backed off (<${RESTART_BACKOFF_S}s)"
 				exit 0
 			fi
+
 			date +%s >"$HOME/.hipfire/watchdog.lastrestart"
-			say "loader wedge confirmed (daemon $daemon spinning, I/O + log frozen) -> clean restart"
+			say "loader wedge confirmed (daemon $daemon spinning, log frozen; attempt ${fails}) -> clean restart"
 			echo 0 >"$STATE"
 			restart_clean
 			exit 0
 		fi
 	fi
-	# Movement seen: a load is in progress. Healthy.
+	# Movement seen: a load is progressing. Healthy.
 	echo 0 >"$STATE"
 	exit 0
 fi
-
-# 5. No daemon pid found. Nothing to warm for a service that is starting up.
 [ -z "${daemon:-}" ] && exit 0
 
-# 6. Up, idle, model null, nothing loading: warm it so the next user request
-#    pays no ~90s load. The tail of serve.log is the reliable "is a load in
-#    progress" signal: a running or stalled load leaves "loading layer N/64" as
-#    the tail, and firing a duplicate request mid-load is a plausible trigger
-#    for the cancel/reload that leaves the daemon wedged (2026-09-27).
-if tail -n 400 "$LOG" 2>/dev/null | grep -avE "DFlash adaptive-B" | tail -1 | grep -q "loading  *layer"; then
-	exit 0
+# 4. Up, nothing loading, no model resident: warm it so the next user request
+#    pays no ~90s admission-time load (where no keepalive can help, because no
+#    headers exist yet).
+if [ -n "$loading" ]; then
+	exit 0 # a load is in progress (or about to be healed by the branch above)
 fi
 now=$(date +%s)
 last=$(cat "$HOME/.hipfire/watchdog.lastwarm" 2>/dev/null || echo 0)
-if [ $((now - last)) -lt 600 ]; then
-	exit 0
-fi
+[ $((now - last)) -lt "$WARM_COOLDOWN_S" ] && exit 0
 date +%s >"$HOME/.hipfire/watchdog.lastwarm"
-say "unit up, model not resident, idle -> warming"
-# Foreground (not backgrounded): systemd kills the service's cgroup when the
-# script exits, which would cancel a backgrounded load mid-flight.
+say "unit up, idle, no model resident -> warming"
 curl -s --max-time 420 -H 'Content-Type: application/json' \
 	-d '{"model":"qwen3.8:27b-mq4-xt","messages":[{"role":"user","content":"warm"}],"max_tokens":1,"stream":false}' \
 	"$WARM" >/dev/null 2>&1 || true

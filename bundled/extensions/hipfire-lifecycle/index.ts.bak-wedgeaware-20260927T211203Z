@@ -87,33 +87,16 @@ async function getJson(path: string, timeoutMs = 2500): Promise<Record<string, a
 	}
 }
 
-/**
- * Poll /health until hipfire reports a resident model.
- *
- * The budget has to survive a loader wedge, because that is a real, recurring
- * failure here: the daemon's main thread spins waiting for a GPU completion that
- * never arrives and only a restart clears it (see the loader-wedge note in
- * .agents/learnings/hipfire-pi-long-session-failures.md). The hipfire-watchdog
- * timer detects that in ~50s and does a clean restart, so switching to hipfire
- * can legitimately need: detection (~50s) + restart (~10s) + load (~90-150s).
- * 240s sat exactly on that edge and reported "still prewarming" while the
- * watchdog was mid-heal; 480s clears one full heal cycle.
- *
- * Returns `{ model }` when resident, otherwise the last `loading_model` seen, so
- * the caller can report what was actually happening instead of guessing.
- */
-async function waitForModel(maxMs: number): Promise<{ model?: string; loading?: string }> {
+/** Poll /health until hipfire reports a resident model (prewarm finished). */
+async function waitForModel(maxMs: number): Promise<string | null> {
 	const deadline = Date.now() + maxMs;
-	let lastLoading = "";
 	while (Date.now() < deadline) {
 		const health = await getJson("/health");
 		const model = health?.model;
-		if (typeof model === "string" && model.length > 0) return { model };
-		const loading = health?.loading_model;
-		if (typeof loading === "string" && loading.length > 0) lastLoading = loading;
+		if (typeof model === "string" && model.length > 0) return model;
 		await new Promise((resolve) => setTimeout(resolve, 2000));
 	}
-	return { loading: lastLoading };
+	return null;
 }
 
 export default function (pi: ExtensionAPI) {
@@ -188,14 +171,8 @@ export default function (pi: ExtensionAPI) {
 			}
 
 			// ---- entering hipfire: make sure it is up ----
-			// Decide from /health, not from the unit state: `systemctl is-active`
-			// reports "active" for a unit whose server is holding a wedged load, and
-			// waiting on that would burn the whole budget on a daemon the watchdog is
-			// about to kill. Only start when there is no model AND nothing loading.
-			const before = await getJson("/health");
-			const noModel = before === null || typeof before.model !== "string";
-			const noLoad = before === null || typeof before.loading_model !== "string";
-			if (noModel && noLoad && systemctl("is-active", 10_000).out !== "active") {
+			const active = systemctl("is-active", 10_000).out;
+			if (active !== "active") {
 				const started = systemctl("start", 300_000);
 				if (!started.ok) {
 					log(`enter: start FAILED (${started.out}) | ${desc}`);
@@ -203,24 +180,14 @@ export default function (pi: ExtensionAPI) {
 					return;
 				}
 			}
-
-			const { model, loading } = await waitForModel(480_000);
-			log(
-				`enter: ${model ? `ready (${model})` : `NOT ready (loading=${loading || "none"})`} | ${desc}`,
+			const model = await waitForModel(240_000);
+			log(`enter: ${model ? `ready (${model})` : "started, model still prewarming"} | ${desc}`);
+			notify(
+				model
+					? `hipfire ready: ${model}`
+					: "hipfire started, model still prewarming (first request will wait)",
+				model ? "info" : "warning",
 			);
-			if (model) {
-				notify(`hipfire ready: ${model}`, "info");
-			} else if (loading) {
-				notify(
-					`hipfire is stuck loading ${loading} - the watchdog restarts the unit when the loader wedges; retry in a minute`,
-					"warning",
-				);
-			} else {
-				notify(
-					"hipfire is up but nothing is loading and no model is resident - the watchdog will warm it; retry in a minute",
-					"warning",
-				);
-			}
 		} catch (err) {
 			log(`ERROR ${(err as Error).message} | ${desc}`);
 			notify(`hipfire-lifecycle: ${(err as Error).message}`, "error");
