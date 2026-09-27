@@ -3,9 +3,13 @@ gh_token.txt
 out/
 *.log
 dist/
-!bundled/extensions/pi-diff/
-!bundled/extensions/pi-diff/dist/
-!bundled/extensions/pi-diff/dist/**
+# Vendored extensions ship compiled dist/. Their package.json `pi.extensions`
+# may point into it (pi-diff -> ./dist/index.js, pi-background-tasks 2.6.7 ->
+# ./dist/extensions/*.js), so it has to be committed or a clone ships a broken
+# extension. The per-extension treeSha256 gates also hash the filesystem, so an
+# ignored file there makes those gates unreproducible from a clone.
+!bundled/extensions/*/dist/
+!bundled/extensions/*/dist/**
 .artifacts/
 *.log
 .DS_Store
