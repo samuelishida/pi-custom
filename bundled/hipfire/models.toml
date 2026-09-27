@@ -1,0 +1,84 @@
+schema_version = 1
+
+[models."qwen3.8:27b-mq4-xt"]
+path = "/media/smk/Models/hipFire/qwen3.8-27b.mq4-xt"
+registry_tag = "qwen3.8:27b-mq4-xt"
+
+[models."qwen3.8:27b-mq4-xt".overrides.memory]
+# KV logical capacity at load. Valid range 512..1048576.
+#
+# 163840 = 160K.
+#
+# With the VMM KV backend this is a *virtual* reservation, not a preallocation:
+# FireMap reserves a stable HIP VMM address range and grows the physical backing
+# page-aligned only as the sequence actually grows. Measured 2026-09-26: raising
+# the cap 131072 -> 204800 changed load-time VRAM from 18.57 GB to 18.48 GB,
+# i.e. nothing. The cap is free.
+#
+# Filling it is NOT free. Measured growth is ~42,200 B/token, on top of
+# ~15.0 GB weights + ~1.2 GB dflash draft. Measured reachable ceiling with the
+# draft resident is ~150K tokens actually filled (150,030 peaked at 25.21 GB of
+# 25.75 GB; ~200K failed with `prefill: HipError(2): hipMemCreate: out of memory`).
+# So 160K is advertised-but-may-not-fill: a genuine 160K fill needs ~6.9 GB of KV
+# and lands at ~23.1 GB before working buffers. Dropping the dflash draft frees
+# ~1.2 GB and would put 160K back in reach at the cost of speculative decoding.
+max_seq = 163840
+# Pinned rather than inherited. The registry's default_kv_mode for this tag is
+# already q8, but an explicit override keeps the served KV format independent of
+# registry updates.
+kv_cache = "q8"
+
+[models."qwen3.8:27b-mq4-xt".overrides.speculation]
+# DFlash, with the draft resolved from the registry sidecar declaration
+# (qwen38-27b-dflash-mq4.hfq, sha256 d0a74a23..., 1.21 GB). The systemd unit used
+# to pin HIPFIRE_DFLASH_DRAFT; that pin is gone because an env pin beats per-model
+# config for EVERY model the unit serves -- see the unit's env comments.
+mode = "dflash"
+dflash = "auto"
+
+[models."qwen3.6:35b-a3b-mq4r"]
+path = "/media/smk/Models/hipFire/qwen3.6-35b-a3b.mq4r"
+registry_tag = "qwen3.6:35b-a3b-mq4r"
+
+[models."qwen3.6:35b-a3b-mq4r".overrides.memory]
+# 131072 = 128K, as requested.
+#
+# The artifact is 18.70 GB (uniform MQ4G256/qt13 across routed experts, shared
+# experts, attention, router and lm_head; embed Q8F16 only) and the registry
+# declares min_vram_gb = 22.0 against 25.75 GB usable on the 7900 XTX. So the KV
+# budget is ~7 GB minus working buffers -- tighter than the 3.8 dense entry's, on
+# a 35B MoE where experts are 93% of parameters and 3B are active.
+#
+# KV growth per token for THIS artifact has not been measured. Unlike the 3.8
+# entry above there is no B/token figure to quote, so 128K here is advertised,
+# not proven reachable. Measure /stats at depth after the first load before
+# trusting a long-context run. The overrun signature is the clean
+# `prefill: HipError(2): hipMemCreate: out of memory`, not a loader wedge.
+max_seq = 131072
+# q8, matching the 3.8 set. Note the registry entry for this exact tag has
+# default_kv_mode = null, so `auto` would only reach q8 through the universal
+# fallback; the sibling tags (and plain qwen3.6:35b-a3b) do declare q8. Pinned
+# explicitly so the served KV format never depends on that resolution.
+kv_cache = "q8"
+
+[models."qwen3.6:35b-a3b-mq4r".overrides.speculation]
+# MTP, from the .mtp sidecar the pull collects (qwen3.6-35b-a3b.mtp,
+# 466,952,320 B). The loader finds it with no flag at all: it looks for
+# <trunk-stem>.mtp next to the trunk and logs
+# "MTP head loaded (sidecar ...): n_embd=... vocab=...", then sets
+# mtp_weights_present, which is what auto mode keys off.
+#
+# mode and mtp are FORCED rather than left "auto" so the mechanism does not
+# depend on a cascade: this model publishes no dflash/dspark sidecar, so MTP is
+# the only candidate. A forced mechanism whose prerequisites are missing falls
+# back to plain AR with a warning rather than failing closed, so this is safe.
+#
+# The q8 proposal graph stays OFF (HIPFIRE_MTP_PROPOSAL_GRAPH unset): it is
+# token-identical but measured neutral/slightly negative on the A3B K=5 smoke
+# (192.99 tok/s unset vs 191.44 tok/s graph=on, same output md5).
+#
+# Acceptance floor p_min: gfx1100 takes the validated RDNA3-dGPU default of 0.6
+# (override with HIPFIRE_MTP_P_MIN).
+mode = "mtp"
+mtp = "on"
+mtp_k = 3

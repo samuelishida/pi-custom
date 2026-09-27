@@ -48,6 +48,25 @@
             "off": "low",
             "xhigh": "medium"
           }
+        },
+        {
+          "_launch": true,
+          "contextWindow": 131072,
+          "id": "qwen3.6:35b-a3b-mq4r",
+          "input": [
+            "text"
+          ],
+          "maxTokens": 65536,
+          "reasoning": true,
+          "thinkingLevelMap": {
+            "high": "medium",
+            "low": "low",
+            "max": "medium",
+            "medium": "medium",
+            "minimal": "low",
+            "off": "low",
+            "xhigh": "medium"
+          }
         }
       ]
     },

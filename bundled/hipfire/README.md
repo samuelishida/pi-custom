@@ -261,3 +261,71 @@ The watchdog gives up after `MAX_WEDGES_IN_A_ROW=3` consecutive wedges without a
 completed load, backs off for 10 minutes, and raises a desktop notification
 naming this recipe -- an endless restart loop would thrash the GPU and hide the
 cause.
+
+## Two models, per-model policy (qwen3.8:27b-mq4-xt and qwen3.6:35b-a3b-mq4r)
+
+Only one model fits in 25.75 GB, so the served model is chosen by the unit's
+`ExecStart` and everything model-specific lives in `~/.hipfire/models.toml`.
+
+| | `qwen3.8:27b-mq4-xt` | `qwen3.6:35b-a3b-mq4r` |
+|---|---|---|
+| artifact | 14.99 GB, MQ4G256V2 (qt44), dense | 18.70 GB, MQ4G256 (qt13), MoE 35B/3B-active |
+| `memory.max_seq` | 163840 (160K) | 131072 (128K) |
+| `memory.kv_cache` | q8 | q8 |
+| `speculation.mode` | `dflash` (+ `dflash = auto`) | `mtp` (+ `mtp = on`, `mtp_k = 3`) |
+| drafter source | registry sidecar `qwen38-27b-dflash-mq4.hfq` | sibling `qwen3.6-35b-a3b.mtp` |
+| registry tag | `qwen3.8:27b-mq4-xt` | `qwen3.6:35b-a3b-mq4r` |
+
+### Why the unit no longer pins speculation
+
+An `Environment=` line in the unit **beats per-model config for every model the
+unit serves**. The unit used to pin `HIPFIRE_SPECULATION=dflash`, so switching it
+to the 35B would have forced dflash, found no dflash sidecar, and fallen back to
+plain AR with only a log warning -- MTP would silently never engage. The three
+spec env vars are now commented out in the unit as a bisect lever only.
+
+Two corrections that came out of this: the old comment claimed the registry had
+no draft sidecar for `qwen3.8:27b-mq4-xt` (it does -- sha256 `d0a74a23...`), so
+the explicit `HIPFIRE_DFLASH_DRAFT` path was always redundant; and
+`HIPFIRE_QWEN35_MTP` / `HIPFIRE_QWEN_MTP` appear in `docs/env-vars.md` and the
+speculation inventory but **do not exist in the source** -- the real gate is
+`mtp_mode` (`crates/hipfire-generate/src/ar.rs:5399`) plus `mtp_weights_present`,
+which the loader sets from the `.mtp` sidecar it finds at
+`trunk_path.with_extension("mtp")` with no flag at all.
+
+### MTP notes (qwen3.6:35b-a3b-mq4r)
+
+* The 0.47 GB `.mtp` sidecar is pulled automatically ("Fetching MTP sidecar").
+  The serve log confirms it with `MTP head loaded (sidecar ...): n_embd=...`.
+* `p_min` (acceptance floor) selects **0.6 on gfx1100/gfx1101/gfx1102** versus
+  0.0/off elsewhere, so on the 7900 XTX MTP is genuinely active rather than a
+  no-op. Override with `HIPFIRE_MTP_P_MIN`.
+* `HIPFIRE_MTP_PROPOSAL_GRAPH` stays OFF on purpose: token-identical but
+  measured neutral/slightly negative on the A3B K=5 smoke (192.99 tok/s unset vs
+  191.44 graph=on, same output md5).
+* 128K is **advertised, not proven** for this artifact: there is no B/token
+  measurement for it (the 27B's is ~42,200 B/token), and `min_vram_gb` is 22.0
+  against 25.75 GB usable. The overrun signature is the clean
+  `prefill: HipError(2): hipMemCreate: out of memory`, not a loader wedge.
+
+### Switching the served model
+
+```sh
+# 1. stop, which also frees the VRAM the other model is holding
+systemctl --user stop hipfire
+# 2. point ExecStart at the other tag, then start
+sed -i 's/hipfire serve [^ ]*/hipfire serve qwen3.6:35b-a3b-mq4r/' \
+    ~/.config/systemd/user/hipfire.service
+sed -i 's/^default_model = .*/default_model = "qwen3.6:35b-a3b-mq4r"/' ~/.hipfire/config.toml
+systemctl --user daemon-reload && systemctl --user start hipfire
+```
+
+`config.toml`'s `serve.default_model` is pinned too, so a bare `hipfire serve` /
+`hipfire restart` resolves the same tag as the unit. `--kv-mode q8` on the
+ExecStart line stays: both models want q8, and it agrees with the per-model
+`memory.kv_cache`.
+
+In pi, pick the matching `hipfire` model in the picker -- pi sends the model id
+in the request, so a mismatch means the daemon loads a different model than the
+one you selected. The hotswap extension only owns the hipfire-vs-other-provider
+transition, not hipfire-model-vs-hipfire-model.

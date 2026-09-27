@@ -20,19 +20,25 @@ ExecStartPre=/home/smk/.hipfire/bin/serve-preclean.sh
 # Model weights live on the exFAT SSD; keep this in sync with ~/.bashrc.
 Environment=HIPFIRE_MODELS_DIR=/media/smk/Models/hipFire
 Environment=HIPFIRE_ROCM_PATH=/opt/rocm
-# --- speculative decoding (DFlash draft) ---
-# speculation.mode is the canonical selector. It was pinned to "off" here, which
-# disabled speculation regardless of the per-arm policy below.
-Environment=HIPFIRE_SPECULATION=dflash
-# speculation.dflash ("DFlash eligibility policy") has a built-in default of
-# "off", and dflash_mode=off is a HARD daemon-side override that skips loading
-# the draft entirely even when a draft path is supplied. "auto" loads it when a
-# sidecar/draft path is resolvable.
-Environment=HIPFIRE_DFLASH_MODE=auto
-# The registry entry for qwen3.8:27b-mq4-xt carries no paired draft sidecar, so
-# pin it explicitly. Non-empty wins over params.draft; explicitly EMPTY opts out.
-# mq4 is the draft the known-good run used (block=8, tau up to 12 -> ~206 tok/s).
-Environment=HIPFIRE_DFLASH_DRAFT=/media/smk/Models/hipFire/qwen38-27b-dflash-mq4.hfq
+# --- speculative decoding: selected PER MODEL, not pinned here ---
+# The mechanism is carried per model in ~/.hipfire/models.toml:
+#   qwen3.8:27b-mq4-xt    speculation.mode = "dflash"  (speculation.dflash = "auto")
+#   qwen3.6:35b-a3b-mq4r  speculation.mode = "mtp"     (speculation.mtp = "on", mtp_k = 3)
+#
+# An Environment= pin here WINS over per-model config for every model this unit
+# serves, which is precisely how MTP would silently never engage on the 35B: the
+# env selector would force dflash, the 35B publishes no dflash sidecar, and a
+# forced mechanism with missing prerequisites falls back to plain AR with only a
+# warning in the log.
+#
+# The former DFLASH_DRAFT pin was also redundant: its comment claimed the
+# registry entry for qwen3.8:27b-mq4-xt carries no paired draft sidecar, but it
+# does -- qwen38-27b-dflash-mq4.hfq, sha256 d0a74a23..., 1.21 GB -- and the
+# loader resolves it relative to HIPFIRE_MODELS_DIR. Kept commented as a record
+# and as a one-shot bisect lever (env still beats config when deliberately set).
+#Environment=HIPFIRE_SPECULATION=dflash
+#Environment=HIPFIRE_DFLASH_MODE=auto
+#Environment=HIPFIRE_DFLASH_DRAFT=/media/smk/Models/hipFire/qwen38-27b-dflash-mq4.hfq
 # gfx11 iu4-direct MMQ prefill: +7.6% at 88K, +32% at short prefills.
 Environment=HIPFIRE_GFX11_MQ4V2_IU4=1
 ExecStart=/bin/bash -c '/home/smk/.hipfire/bin/hipfire serve qwen3.8:27b-mq4-xt 127.0.0.1 11435 -d --kv-mode q8 --idle-timeout 0 && sleep 1 && /home/smk/.hipfire/bin/serve-pid.sh > %t/hipfire.pid'

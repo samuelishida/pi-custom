@@ -67,6 +67,12 @@ install_file() {
 
 install_file "$SRC/config.toml" "$HIPFIRE_DIR/config.toml" "hipfire config.toml"
 install_file "$SRC/hipfire.service" "$SYSTEMD_DIR/hipfire.service" "hipfire.service"
+# Per-model KV + speculation policy. This is the file that makes two models
+# coexist: an Environment= pin in the unit wins over per-model config for EVERY
+# model the unit serves, so the spec mechanism lives here instead (qwen3.8 =
+# dflash, qwen3.6:35b-a3b-mq4r = mtp). Paths in it are machine-specific, hence
+# the backup-before-overwrite in install_file.
+install_file "$SRC/models.toml" "$HIPFIRE_DIR/models.toml" "hipfire models.toml"
 # ExecStartPre: clears stale serve/daemon pid records (a zombie still answers
 # kill -0, which makes `hipfire serve` die with "already running").
 install_file "$SRC/serve-preclean.sh" "$HIPFIRE_DIR/bin/serve-preclean.sh" "serve-preclean.sh"
@@ -118,6 +124,21 @@ for (const [name, prov] of Object.entries(src.providers ?? {})) {
       `${name}/${model.id} maxTokens ${JSON.stringify(dmodel.maxTokens)} -> ${model.maxTokens}`,
     );
     if (!check) dmodel.maxTokens = model.maxTokens;
+    changed = true;
+  }
+}
+
+// Additive: a source model whose id is missing from an EXISTING destination
+// provider is appended. Without this a restore silently drops entries (only
+// maxTokens was merged, by index). Never re-adds a provider the user removed,
+// and never deletes or reorders anything.
+for (const [name, prov] of Object.entries(src.providers ?? {})) {
+  const dprov = dest.providers?.[name];
+  if (!dprov || !Array.isArray(dprov.models)) continue;
+  for (const model of prov.models ?? []) {
+    if (dprov.models.some((m) => m.id === model.id)) continue;
+    applied.push(`${name}/${model.id} added (absent from catalogue)`);
+    if (!check) dprov.models.push(model);
     changed = true;
   }
 }

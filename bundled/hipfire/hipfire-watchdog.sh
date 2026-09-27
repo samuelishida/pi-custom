@@ -96,6 +96,28 @@ restart_clean() {
 	systemctl --user start "$UNIT" 2>/dev/null || say "start after clean stop FAILED"
 }
 
+# The tag of the model the running serve was started with. Derived from the live
+# process, NOT hardcoded: warming a tag the daemon was not started with would
+# make the daemon load a second model (or error), which is worse than not warming
+# at all. The daemon's own cmdline carries no tag, so read the serve process.
+served_model() {
+	local p c m
+	for p in $(pgrep -f 'bin/daemon|bin/hipfire serve' 2>/dev/null); do
+		[ "$p" = "$$" ] && continue
+		c=$(tr '\0' ' ' <"/proc/$p/cmdline" 2>/dev/null) || continue
+		# tag-shaped token: letter-led, colon-separated (excludes 127.0.0.1:11435)
+		m=$(printf '%s' "$c" | grep -oE '[A-Za-z][A-Za-z0-9._-]*:[A-Za-z0-9._-]+' | head -1)
+		if [ -n "$m" ]; then
+			printf '%s' "$m"
+			return 0
+		fi
+	done
+	# Fallback: the pinned serve default. Still better than a hardcoded tag.
+	m=$(sed -n 's/^default_model *= *"\(.*\)"/\1/p' "$HOME/.hipfire/config.toml" 2>/dev/null | head -1)
+	[ -n "$m" ] && { printf '%s' "$m"; return 0; }
+	return 1
+}
+
 # Prints "frozen" when the daemon's I/O counters AND serve.log are unchanged
 # after $2 seconds while the process is in R state.
 sample_daemon() {
@@ -183,9 +205,10 @@ fi
 now=$(date +%s)
 last=$(cat "$HOME/.hipfire/watchdog.lastwarm" 2>/dev/null || echo 0)
 [ $((now - last)) -lt "$WARM_COOLDOWN_S" ] && exit 0
+tag=$(served_model) || { say "cannot determine served model tag - skipping warm"; exit 0; }
 date +%s >"$HOME/.hipfire/watchdog.lastwarm"
-say "unit up, idle, no model resident -> warming"
+say "unit up, idle, no model resident -> warming ${tag}"
 curl -s --max-time 420 -H 'Content-Type: application/json' \
-	-d '{"model":"qwen3.8:27b-mq4-xt","messages":[{"role":"user","content":"warm"}],"max_tokens":1,"stream":false}' \
+	-d "{\"model\":\"${tag}\",\"messages\":[{\"role\":\"user\",\"content\":\"warm\"}],\"max_tokens\":1,\"stream\":false}" \
 	"$WARM" >/dev/null 2>&1 || true
 exit 0
