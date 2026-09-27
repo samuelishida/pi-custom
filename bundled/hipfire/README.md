@@ -82,14 +82,58 @@ and dies identically.
 
 The guardrail no longer special-cases hipfire, so its line for a 163840 window
 is **~117k** -- above the cliff. Long hipfire sessions therefore need the
-timeout itself fixed rather than a prompt cap, via one of:
+timeout itself fixed rather than a prompt cap. Three ways, in order of
+preference:
 
-- a keepalive proxy in front of hipfire that injects SSE comments (`:keepalive`)
-  during the silent prefill, so the client's idle timer keeps resetting;
-- a pi transport/fetch with `bodyTimeout` raised (pi accepts `fetch`/`transport`
-  options, but nothing in `models.json` wires one up);
-- a hipfire-side change to emit periodic progress during prefill (needs a
-  rebuild).
+1. **hipfire emits keepalives during prefill** -- IMPLEMENTED, see
+   `prefill-keepalive.patch` below. Fixes it for every client.
+2. **a proxy in front of hipfire** that injects the same SSE comments on the
+   wire. No rebuild, but adds a process to keep running.
+3. **a pi transport/fetch with `bodyTimeout` raised** (pi accepts
+   `fetch`/`transport` options, but nothing in `models.json` wires one up).
+
+## `prefill-keepalive.patch` (hipfire source change)
+
+`hipfire serve` writes the role chunk to the SSE stream immediately and then
+nothing until the first generated token, so a cold prefill leaves the connection
+byte-silent for minutes -- which is exactly what trips a client's idle timeout.
+The patch adds a `PrefillHeartbeat` to
+`crates/hipfire-cli/src/serve/http.rs` that writes `: keepalive\n\n` SSE comment
+frames every 15s for the life of the request.
+
+- Comment frames are discarded by conforming SSE parsers (the OpenAI SDKs use
+  `eventsource-parser`), so model output is byte-for-byte unchanged.
+- 15s sits under undici's 300s `bodyTimeout` *and* nginx's 60s
+  `proxy_read_timeout`, at ~15 bytes per tick.
+- The task holds a sender clone and the response body only ends once every
+  sender is dropped, so the heartbeat is wrapped in a guard that aborts on
+  `Drop`, and that guard is moved into the completion closure -- a finished or
+  panicking request can never hold the response open.
+
+The patch is against `ad10b3d97cedc8ac156c2e8bc2f2e21735ce4de6` (verified to
+apply to a pristine checkout of that commit) and only touches that one file
+(+61 lines, no deletions).
+
+Apply, build, and install with:
+
+```sh
+scripts/apply-hipfire-prefill-keepalive.sh              # apply + build + install
+scripts/apply-hipfire-prefill-keepalive.sh --check      # drift check (exit 1)
+```
+
+It stops the service before installing, because a running `hipfire` holds the
+binary's inode (`ETXTBSY` otherwise), and backs up the previous binary as
+`hipfire.bak-keepalive-<ts>`.
+
+Verify behaviourally -- `strings` will NOT show the keepalive literal, because
+LLVM materialises the 13-byte constant as immediate stores rather than a
+`.rodata` blob. Capture a request that runs longer than 15s and count the
+comment frames:
+
+```sh
+curl -sS -N --data-binary @probe.json -H 'Content-Type: application/json' \
+     http://127.0.0.1:11435/v1/chat/completions | grep -c '^: keepalive'
+```
 
 Guardrail lines at the current formula (`reserve = min(32768 + 0.531*(window -
 122880), window * 0.2847)`):
