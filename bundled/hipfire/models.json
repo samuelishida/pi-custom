@@ -404,31 +404,6 @@
           }
         }
       ]
-    },
-    "vllm": {
-      "api": "openai-completions",
-      "apiKey": "vllm",
-      "baseUrl": "http://127.0.0.1:8000/v1",
-      "models": [
-        {
-          "_launch": true,
-          "contextWindow": 98304,
-          "id": "qwen3.8-27b-ad",
-          "input": [
-            "text"
-          ],
-          "reasoning": true,
-          "thinkingLevelMap": {
-            "high": "medium",
-            "low": "low",
-            "max": "medium",
-            "medium": "medium",
-            "minimal": "low",
-            "off": "low",
-            "xhigh": "medium"
-          }
-        }
-      ]
     }
   }
 }
