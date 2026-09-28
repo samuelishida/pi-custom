@@ -129,8 +129,13 @@ severity rules, and output format — lives in
 user prompt contains only the plan content and the relevant
 standards/common-mistakes:
 
+> **pi harness note.** `subagent_type` is limited to `explore|plan|coder`; the
+> agent profile is selected with `agent_file`. The Claude Code spelling
+> `Agent(subagent_type="<profile>")` is a schema error here, and the profile
+> pins that used to name `sonnet`/`haiku` are gone so these inherit the session
+> route (provider- and model-agnostic).
 ```
-Agent(subagent_type="plan-reviewer", prompt=<USER PROMPT>)
+agent(subagent_type="explore", agent_file="plan-reviewer", prompt=<USER PROMPT>)
 ```
 
 Where `<USER PROMPT>` is:

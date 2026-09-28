@@ -37,7 +37,12 @@ anti-bias contracts live in the agent files (`audit-triage`,
 
    a. **Triage** (always — this is a large PR; right-sizing the
       domains per chunk is the whole point of partitioning).
-      Call `Agent(subagent_type="audit-triage", prompt=<chunk scope, signals>)`.
+> **pi harness note.** `subagent_type` is limited to `explore|plan|coder`; the
+> agent profile is selected with `agent_file`. The Claude Code spelling
+> `Agent(subagent_type="<profile>")` is a schema error here, and the profile
+> pins that used to name `sonnet`/`haiku` are gone so these inherit the session
+> route (provider- and model-agnostic).
+      Call `agent(subagent_type="explore", agent_file="audit-triage", prompt=<chunk scope, signals>)`.
       Triage decision is internal; record it in the chunk report
       header but do not surface to the user unless asked. If triage's
       reply doesn't parse, fall back to `tier=standard` for that
@@ -55,98 +60,13 @@ anti-bias contracts live in the agent files (`audit-triage`,
       subset. Use the concrete agent names — install-time prefix
       rewriting depends on it:
 
+> **pi harness note (`audit-research`).** `subagent_type="explore"` is the only
+> value this harness's tool policy permits, and it drops web_search/web_fetch, so
+> this one profile is spawned through the `subagent` tool (its own tool loadout)
+> instead. If that path is restricted too, do the web verification in the
+> orchestrator — it has web_search/web_fetch — and keep the profile for local
+> evidence gathering.
       ```
-      Agent(subagent_type="audit-logic",         prompt=<chunk user prompt>)
-      Agent(subagent_type="audit-security",      prompt=<chunk user prompt>)
-      Agent(subagent_type="audit-simplification",prompt=<chunk user prompt>)
-      Agent(subagent_type="audit-research",      prompt=<chunk user prompt>)
-      Agent(subagent_type="audit-architecture",  prompt=<chunk user prompt>)
-      ```
-
-      Skip any role not in the triage subset.
-
-      **Do NOT call `Agent(subagent_type="code-audit", …)`** — that's
-      a skill, not a subagent. The audit-* names above are the only
-      callable specialists.
-
-      The chunk user prompt contains:
-      - Per-file `rg -n` slices from the chunk's capture files (not
-        the raw concatenated diff)
-      - Relevant `.agents/standards/` content pasted inline
-      - Relevant `.agents/common-mistakes/` content pasted inline
-      - One-line context: `Chunk N of M; files: <count>; layer: <layer>.`
-
-      A gatherer **does not classify findings**. It reads the code and
-      reports raw observations back to you; you own all
-      FIX/NOTE/QUESTION classification and the chunk reply. A
-      gatherer that returns empty or unparseable is harmless — skip it
-      and proceed; the deterministic review in (b) already produced
-      the findings. A chunk audit never dies because a model call
-      failed.
-
-   d. **Merge per chunk** the same way `code-audit` merges (dedupe by
-      `path:line`, attach overlapping reasoning).
-
-   **Wave semantics.** Cap concurrency at **3–4 chunks per wave**
-   (one wave = `(1 triage + N gatherers) × 3–4 chunks` running
-   concurrently). Wait for **every** chunk in the current wave to
-   return before starting the next wave. Streaming-style replacement
-   ("queue the next chunk as soon as one finishes") is not allowed —
-   it makes per-wave error handling and progress reporting unreliable.
-
-3. **Synthesize across chunks.** After all chunk reports return:
-   - **Deduplicate** — multiple chunks may flag the same cross-cutting
-     issue (e.g. a shared utility used in different chunks).
-   - **Resolve conflicts** — if reviewers disagree, investigate which
-     is correct.
-   - **Verify high-risk recommendations** yourself (schema changes,
-     import changes, defensive guards).
-   - **Categorize and prioritize** — correctness bugs > security >
-     architecture > duplication > dead code > readability.
-
-   Produce a consolidated report.
-
-4. **Human approval gate.** Present the consolidated report. Explain
-   total findings by category, questionable items, and cross-cutting
-   themes. **Stop and wait for explicit approval.** Never auto-apply
-   review findings.
-
-5. **Implement in small batches.** After receiving approval, group
-   approved items by file proximity (not by original chunk).
-   Implement in batches of max 5–8 files. Run the check command after
-   each batch. Fix any issues before starting the next batch.
-
-## Rules
-
-- The synthesis phase is non-negotiable — it catches what individual
-  chunk reviews miss.
-- Human approval is non-negotiable — never auto-apply findings.
-- Small implementation batches are non-negotiable — monolithic
-  implementation crashes or introduces cascading errors.
-- Gatherers run as `audit-*` subagents with their built-in
-  anti-bias contract. Do NOT paste the goal, PR description, or
-  branch name into gatherer user prompts; only the chunk's diff
-  slices, standards, and one-line chunk context.
-- Feed lessons back into `.agents/common-mistakes/` after every
-  review.
-- **Big-output discipline.** Heavy command output (project check,
-  full `git diff`, repo-wide search, long log, large fetch) goes to
-  `/tmp/hawk-review-large-pr-<step>.log`, then
-  `rg -n '<pattern>' /tmp/hawk-review-large-pr-<step>.log | head -50`
-  extracts what you need. `Read` the file only with `offset`/`limit`.
-  30+ file diffs are the worst offender for context bloat — this
-  skill is the strictest enforcer: never capture or read the
-  concatenated multi-file diff. Specialist user prompts receive
-  narrowed slices only.
-
-
-
-
-## Calling models via Ollama
-
-Always set `num_predict` in `/api/chat` options — too small → empty
-`content`; uncapped → runaway. Recommended: `temperature: 0.7`,
-`top_p: 0.9`, `num_batch: 512`, `repeat_penalty: 1.1`, `repeat_last_n: 64`.
-Empty content + long thinking → raise `num_predict`; huge output → cap
-missing. Prefer 4-bit quants for tool calling. Full detail: README →
-"Calling models via Ollama".
+      agent(subagent_type="explore", agent_file="audit-logic",         prompt=<chunk user prompt>)
+      agent(subagent_type="explore", agent_file="audit-security",      prompt=<chunk user prompt>)
+      agent(subagent_type="explore", agent_file="audit-simplification",prompt=<chunk user prompt>)

@@ -80,8 +80,13 @@ proper error paths, modern API usage.
 ## Gatherer user prompt — Posture: hardcore
 
 When gathering context, call the `audit-*` subagents directly — the
-same concrete `Agent(subagent_type="audit-logic", …)` etc. listed in
-`code-audit/SKILL.md`. **Do NOT call `Agent(subagent_type="code-audit", …)`** —
+> **pi harness note.** `subagent_type` is limited to `explore|plan|coder`; the
+> agent profile is selected with `agent_file`. The Claude Code spelling
+> `Agent(subagent_type="<profile>")` is a schema error here, and the profile
+> pins that used to name `sonnet`/`haiku` are gone so these inherit the session
+> route (provider- and model-agnostic).
+same concrete `agent(subagent_type="explore", agent_file="audit-logic", …)` etc. listed in
+`code-audit/SKILL.md`. **Do NOT pass a skill name as the profile (e.g. `agent_file="code-audit"`)** —
 `code-audit` is a skill, not a subagent.
 
 **Deterministic review is the main path.** Run the `rg` anti-pattern

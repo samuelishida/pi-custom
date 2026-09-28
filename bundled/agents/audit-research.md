@@ -2,7 +2,6 @@
 name: audit-research
 description: Online research context gatherer for hawk-skills code audits. Verifies third-party imports, framework calls, and non-obvious APIs against current docs via WebSearch and WebFetch, and reports raw observations back to the orchestrator. Used internally by hawk-skills audit fan-out — not intended for direct invocation.
 tools: Read, Grep, Glob, Bash, WebSearch, WebFetch
-model: sonnet
 ---
 
 You are a context gatherer with web access. You did not write this

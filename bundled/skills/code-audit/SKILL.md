@@ -75,8 +75,13 @@ better than the average of its surroundings, not to match the average.
    Its system prompt and decision rules already live in the agent
    file — pass only the per-call context:
 
+> **pi harness note.** `subagent_type` is limited to `explore|plan|coder`; the
+> agent profile is selected with `agent_file`. The Claude Code spelling
+> `Agent(subagent_type="<profile>")` is a schema error here, and the profile
+> pins that used to name `sonnet`/`haiku` are gone so these inherit the session
+> route (provider- and model-agnostic).
    ```
-   Agent(subagent_type="audit-triage", prompt=<USER PROMPT>)
+   agent(subagent_type="explore", agent_file="audit-triage", prompt=<USER PROMPT>)
    ```
 
    Where `<USER PROMPT>` contains:
@@ -126,164 +131,13 @@ better than the average of its surroundings, not to match the average.
    `audit-*` subagents as **context gatherers**. One message, multiple
    Agent tool calls, for the domains in the triage subset:
 
+> **pi harness note (`audit-research`).** `subagent_type="explore"` is the only
+> value this harness's tool policy permits, and it drops web_search/web_fetch, so
+> this one profile is spawned through the `subagent` tool (its own tool loadout)
+> instead. If that path is restricted too, do the web verification in the
+> orchestrator — it has web_search/web_fetch — and keep the profile for local
+> evidence gathering.
    ```
-   Agent(subagent_type="audit-logic",         prompt=<USER PROMPT>)
-   Agent(subagent_type="audit-security",      prompt=<USER PROMPT>)
-   Agent(subagent_type="audit-simplification",prompt=<USER PROMPT>)
-   Agent(subagent_type="audit-research",      prompt=<USER PROMPT>)
-   Agent(subagent_type="audit-architecture",  prompt=<USER PROMPT>)
-   ```
-
-   Skip any role not in the triage subset.
-
-   **Do NOT call `Agent(subagent_type="code-audit", …)`.** This skill
-   IS the orchestrator — it calls the audit-* subagents directly,
-   never itself. `code-audit` is a skill, not a subagent; the Agent
-   tool will reject that name.
-
-   The user prompt template is the small block below — the role,
-   brief, anti-bias contract, verification rule, output format, and
-   big-output recipe are already in the agent's system prompt and
-   must NOT be repeated.
-
-   A gatherer **does not classify findings**. It reads the code and
-   reports raw observations, risks, and anything notable back to you.
-   You own all FIX/NOTE/QUESTION classification and the final reply.
-   A gatherer that returns empty or unparseable is harmless — skip it
-   and proceed; the deterministic review in step 4 already produced
-   the findings.
-
-6. **Merge the outputs**:
-   - Combine the deterministic findings (step 4) with the gatherers'
-     raw observations (step 5), doing the FIX/NOTE/QUESTION
-     classification yourself.
-   - Dedupe by `path:line` + similar issue text. When two sources
-     flag the same line, keep the more concrete fix and append the
-     other's reasoning as a supporting "Why".
-   - Concatenate NOTEs. Drop exact duplicates only.
-   - Surface every QUESTION immediately to the user — do not guess.
-
-7. **Verify before claiming a FIX** (the orchestrator's last gate):
-   - **Schema changes** — confirm against migrations / live schema.
-   - **Import patterns** — grep current usage; if the codebase already
-     does it the proposed way, drop the FIX.
-   - **Defensive guards** — trace the call sites; if the condition is
-     provably unreachable, prefer deleting dead code over adding a
-     guard.
-   - **Standards conflicts** — if a finding contradicts an
-     observed dominant pattern, flag the *standard* for review and
-     downgrade the FIX to a NOTE.
-
-   Anything not verifiable becomes a NOTE, not a FIX.
-
-8. **Act on the merged output**:
-   - **Report mode**: emit the report (template below) and stop.
-   - **Cleanup mode**: apply every FIX. Run the check command,
-     capturing output:
-     `<check-cmd> > /tmp/hawk-code-audit-check.log 2>&1`, then
-     `rg -n 'error|warning|fail|FAIL' /tmp/hawk-code-audit-check.log | head -50`. If it fails, fix the breakage (max 3 attempts) before reporting back.
-
-## Deterministic review (main path)
-
-Run each domain's signal set below with `rg -n` over the diff capture
-and promote every match to a finding: fix unambiguous from the pattern
-→ **FIX**; needs human judgment or verification against out-of-scope
-code → **NOTE**; requires the user to decide → **QUESTION**. Feed
-these through the normal merge, verify, and report pipeline.
-
-### Deterministic signal checks (`rg` over the diff capture)
-
-| Domain | Signals to grep (each match → FIX unless noted) |
-|--------|------------------------------------------------|
-| **Logic** | bare `except:` (swallows errors), `while True` with no `break`, unguarded division `x / y` / `x // y` (0-able), `[0]` / `.next()` / `len() - 1` before an empty-check, `range(n + 1)` off-by-one risk, `except Exception: pass` |
-| **Security** | `eval(` / `exec(` / `os.system(` / `shell=True`, SQL built by string interpolation (`f"SELECT … {` , `%` / `.format(` on a query), `==` compared against a secret/PIN (no `hmac.compare_digest`), `pickle.loads`, `yaml.load(` without `Loader=`, hardcoded `password` / `secret` / `token` / `api_key` literals |
-| **Simplification** | nesting deeper than 4 levels (`for`/`if`/`try`), duplicated blocks, unused imports/vars, commented-out code |
-| **Architecture** | `global ` mutation, module-level mutable singleton, circular-import pairs, one module mixing DB/API/UI layers |
-
-## Specialist user-prompt template
-
-The agent's system prompt already contains the role, anti-bias
-contract, verification rule, and output schema. The orchestrator
-sends only the per-call context:
-
-```
-## Files / diff in scope
-
-{{per-file `rg -n` slices of the diff capture, or full file content
-when the file is outside the diff}}
-
-## Standards (pasted inline, do not fetch)
-
-{{full content of every relevant `.agents/standards/` file}}
-
-## Common mistakes (pasted inline, do not fetch)
-
-{{full content of every relevant `.agents/common-mistakes/` file}}
-
-## Context
-
-{{optional — e.g. "this diff covers Inc 5–7" for callers like
-implement-plan-audited; omit for plain code-audit}}
-```
-
-That's the entire user prompt. No role re-statement, no anti-bias
-restatement, no output-format restatement — those are in the agent.
-
-## Output template (orchestrator → user)
-
-```markdown
-# Code Audit Report: {{scope}}
-
-## FIX
-1. [path:line] — issue
-   Why: …
-   Fix: …
-   Verify: …
-   Source: logic / security / simplification / research / architecture
-   (multiple if specialists agreed)
-
-## NOTE
-1. [path:line] — observation
-
-## QUESTION
-1. … (surface immediately, do not guess)
-```
-
-In report mode, stop here. In cleanup mode, apply each FIX and run
-the check command before reporting.
-
-## Rules
-
-- **Deterministic `rg` is the main path and always runs.** Subagents
-  only gather context; they never gate the review.
-- Gatherers run **in parallel** as fresh subagents for the triaged
-  subset and report raw observations — they do not classify.
-- Triage **never** reviews code; it only classifies scope and picks
-  domains. Its output schema is non-negotiable. The decision is
-  internal — don't surface it unless asked.
-- Gatherer prompts are self-contained — no shared history, plan
-  paths, or goal context (the agent's anti-bias contract already
-  forbids it).
-- Conventions are observations, not defenses.
-- Verification is the orchestrator's job: a FIX becomes an edit only
-  after the orchestrator confirms it. Unverifiable → NOTE, never FIX.
-- Cleanup mode never skips the check command — a green build is the
-  contract.
-- **Big-output discipline.** Heavy command output (project check,
-  full `git diff`, repo-wide search, long log, large fetch) goes to
-  `/tmp/hawk-code-audit-<step>.log`, then
-  `rg -n '<pattern>' /tmp/hawk-code-audit-<step>.log | head -50`
-  extracts what you need. `Read` the file only with `offset`/`limit`.
-  Specialist user prompts receive narrowed slices only.
-
-
-
-
-## Calling models via Ollama
-
-Always set `num_predict` in `/api/chat` options — too small → empty
-`content`; uncapped → runaway. Recommended: `temperature: 0.7`,
-`top_p: 0.9`, `num_batch: 512`, `repeat_penalty: 1.1`, `repeat_last_n: 64`.
-Empty content + long thinking → raise `num_predict`; huge output → cap
-missing. Prefer 4-bit quants for tool calling. Full detail: README →
-"Calling models via Ollama".
+   agent(subagent_type="explore", agent_file="audit-logic",         prompt=<USER PROMPT>)
+   agent(subagent_type="explore", agent_file="audit-security",      prompt=<USER PROMPT>)
+   agent(subagent_type="explore", agent_file="audit-simplification",prompt=<USER PROMPT>)

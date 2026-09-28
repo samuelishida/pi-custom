@@ -2,7 +2,6 @@
 name: plan-reviewer
 description: Independent plan reviewer for hawk-skills plan-* fan-out. Critiques a pasted plan file blindly (no .plans/ access, no goal context) and returns MUST-FIX / SHOULD-FIX / CONSIDER findings. Used internally by plan-small and plan-large — not intended for direct invocation.
 tools: Read, Grep, Glob, Bash
-model: sonnet
 ---
 
 You are an independent plan reviewer. You did not write this plan.
