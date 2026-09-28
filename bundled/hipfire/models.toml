@@ -69,30 +69,28 @@ path = "/media/smk/Models/hipFire/qwen3.6-35b-a3b.mq4r"
 registry_tag = "qwen3.6:35b-a3b-mq4r"
 
 [models."qwen3.6:35b-a3b-mq4r".overrides.generation]
-# 0.6 by request -- and unlike the 27B this IS a value Qwen publishes for this
-# model. Qwen3.6-35B-A3B's card gives, for "thinking mode for precise coding
-# tasks (e.g. WebDev)": temperature=0.6, top_p=0.95, top_k=20, min_p=0.0,
-# presence_penalty=0.0, repetition_penalty=1.0. The registry's general profile
-# (temperature 1.0, presence_penalty 1.5) would otherwise apply.
+# temperature 0.2 + repeat_penalty 1.5 by request: a near-greedy, strongly
+# de-repeated profile for agentic tool use on an MQ4 MoE body.
 #
-# presence_penalty is deliberately left to the registry at 1.5 rather than the
-# coding recipe's 0.0: repetition is the reported failure mode, and both Qwen
-# cards name presence_penalty (0-2) as the lever against endless repetition, at
-# the cost of occasional language mixing. To follow the coding recipe exactly:
-#   hipfire config qwen3.6:35b-a3b-mq4r set generation.presence_penalty 0.0
-temperature = 0.6
-
-# 1.1 by request -- a deliberate deviation: this model's card says
-# repetition_penalty 1.0 for every profile (general, coding and instruct).
+# Both are deliberate deviations and are flagged as such, because neither appears
+# in Qwen3.6-35B-A3B's card for any profile (general thinking 1.0 with
+# presence_penalty 1.5, precise coding 0.6, instruct 0.7 -- always
+# repetition_penalty 1.0). The registry layer would supply those; only a value
+# written here outranks it.
 #
-# Why it is worth knowing before raising further: hipfire's own note on this key
-# reads "Kept low; higher values harm some MQ4 greedy paths", and this is an MQ4
-# MoE body. 1.1-1.5 is the usual band for breaking repetition on quantized MoE
-# models; if output starts to degrade (language mixing, stray tokens, dropped
-# structure) this is the first knob to walk back -- before touching
-# presence_penalty (registry 1.5) or the global n-gram loop guard, which cover
-# repetition without altering the sampling distribution.
-repeat_penalty = 1.1
+# What to watch: these two pull against each other in the risky direction.
+# temperature 0.2 is close to greedy, which is the regime where repetition loops
+# live, and hipfire's own note on repeat_penalty reads "Kept low; higher values
+# harm some MQ4 greedy paths" -- on an MQ4 MoE body, at a near-greedy
+# temperature, 1.5 is a strong penalty. So this profile leans on the penalties
+# (this key, the registry's presence_penalty 1.5, and the global n-gram loop
+# guard) to suppress loops rather than on sampling diversity.
+#
+# If output degrades -- language mixing, stray tokens, dropped structure -- walk
+# repeat_penalty back toward 1.1 first, then raise temperature. Those penalties
+# are the cheaper thing to blame, and the card's own value for this key is 1.0.
+temperature = 0.2
+repeat_penalty = 1.5
 
 [models."qwen3.6:35b-a3b-mq4r".overrides.memory]
 # 131072 = 128K, as requested.
