@@ -67,6 +67,25 @@
             "off": "low",
             "xhigh": "medium"
           }
+        },
+        {
+          "_launch": true,
+          "contextWindow": 163840,
+          "id": "ornith-1.5:35b-a3b-mq4r",
+          "input": [
+            "text"
+          ],
+          "maxTokens": 65536,
+          "reasoning": true,
+          "thinkingLevelMap": {
+            "high": "medium",
+            "low": "low",
+            "max": "medium",
+            "medium": "medium",
+            "minimal": "low",
+            "off": "low",
+            "xhigh": "medium"
+          }
         }
       ]
     },

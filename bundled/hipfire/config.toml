@@ -9,7 +9,7 @@ queue_timeout_ms = 300000
 # config. Their schema defaults are qwen3.5:9b, 0.0.0.0 and 300s, which do NOT
 # match the systemd unit: pinning them here means a manual CLI invocation loads
 # the same model on the same address with the same idle policy as the unit.
-default_model = "qwen3.6:35b-a3b-mq4r"
+default_model = "ornith-1.5:35b-a3b-mq4r"
 host = "127.0.0.1"
 idle_timeout_seconds = 0
 
