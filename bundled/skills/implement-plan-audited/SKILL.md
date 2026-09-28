@@ -208,12 +208,13 @@ triage — bias is up.
 call per role in the triaged subset. Use the concrete agent names so
 install-time prefix rewriting stays consistent:
 
-> **pi harness note (`audit-research`).** `subagent_type="explore"` is the only
-> value this harness's tool policy permits, and it drops web_search/web_fetch, so
-> this one profile is spawned through the `subagent` tool (its own tool loadout)
-> instead. If that path is restricted too, do the web verification in the
-> orchestrator — it has web_search/web_fetch — and keep the profile for local
-> evidence gathering.
+> **pi harness note (`audit-research`).** This profile cannot be spawned on this
+> box: `subagent_type` is limited by tool policy to `explore`, which drops
+> web_search/web_fetch, and tmux subagents are not used here (background work
+> goes through `bg_run`/`bg_delegate`). So do the web verification in the
+> orchestrator, which holds `web_search`/`web_fetch` directly, and keep local
+> evidence gathering in this skill. The profile itself is fine on harnesses whose
+> policy allows web-capable subagents.
 ```
 agent(subagent_type="explore", agent_file="audit-logic",         prompt=<USER PROMPT>)
 agent(subagent_type="explore", agent_file="audit-security",      prompt=<USER PROMPT>)

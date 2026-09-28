@@ -50,11 +50,14 @@ Corrections applied (2026-09-28):
   agent_file="X", prompt=…)`, plus a short harness note so the reasoning travels
   with the skill. The two `Do NOT call Agent(subagent_type="code-audit")`
   warnings were reworded — a *skill* name is not an agent profile.
-* `audit-research` is routed through the `subagent` tool
-  (`agent="audit-research"`), which loads the profile's own tool loadout, because
-  verified web access is that profile's entire purpose and `explore` strips it.
-  An orchestrator fallback is documented in the skill: the orchestrator holds
-  `web_search`/`web_fetch` itself, so the web-verification finding is never lost.
+* `audit-research` is **not spawned at all** on this box: verified web access is
+  that profile's entire purpose, `explore` strips it, and the obvious alternative
+  -- the `subagent` tool, which loads a profile's own tool loadout -- is the
+  tmux-based path this box has ruled out (background work goes through
+  `bg_run`/`bg_delegate`). The skills now say to do the web verification in the
+  orchestrator, which holds `web_search`/`web_fetch` directly, and to keep local
+  evidence gathering in the skill. The profile itself stays valid for harnesses
+  whose policy allows web-capable subagents.
 
 ## Hardest decision
 
@@ -85,11 +88,13 @@ skill recording why.
 
 ## Least confident
 
-* The `subagent` tool is the async path (tmux pane, result delivered later), so
-  whether it also preserves the profile's web tools under the *same* tool policy
-  is asserted from its documented behaviour ("loads the agent's fixed profile —
-  its model, tool loadout, and system prompt"), not from a completed run at the
-  time of writing. The skill carries the orchestrator fallback for that reason.
+* Whether the `subagent` tool would preserve a profile's web tools under the same
+  policy is unknown, and deliberately not pursued: it is the tmux path this box
+  excludes. The orchestrator does that work instead.
+* Whether a *future* tool-policy change makes `coder`/`plan` spawnable. The policy
+  is the reason the fan-out is restricted to `explore` today; if it loosens, the
+  corrected call sites would still work and `audit-research` could move back to a
+  spawned role.
 * Whether `pi-muselinn-harness` normalizes the capitalized Claude tool names in
   `audit-*.md` (`Read, Grep, Glob, Bash, WebSearch, WebFetch`) against its own
   lowercase tools. It did not matter in practice — `explore` supplied the
