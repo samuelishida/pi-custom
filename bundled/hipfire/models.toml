@@ -134,3 +134,127 @@ kv_cache = "q8"
 mode = "mtp"
 mtp = "on"
 mtp_k = 3
+
+# ─────────────────────────────────────────────────────────────────────────────
+# ornith-1.5:35b-a3b-mq4r — Ornith 1.5 35B-A3B (MoE 35B/3B-active, Qwen3.5
+# family). Same uniform MQ4G256V2/--no-q8-router Redline SKU convention as the
+# 3.6 35B above. Added 2026-09-28; every override below is COPIED from the 3.6
+# block at request ("same settings of qwen 3.6 35b") — inherited, not measured
+# on this artifact. Registry values quoted are from registry/models.json.
+#
+# Three of these keys are pinned for PARITY rather than copied verbatim, because
+# their 3.6 values arrive from that tag's registry entry and would not follow a
+# literal copy: generation.presence_penalty (1.5) and memory.kv_backend (vmm),
+# both commented below. The one difference deliberately NOT forced is
+# reasoning.effort, where the registry supplies xhigh for Ornith versus `auto`
+# for the 3.6 tag.
+# ─────────────────────────────────────────────────────────────────────────────
+[models."ornith-1.5:35b-a3b-mq4r"]
+path = "/media/smk/Models/hipFire/ornith-1.5-35b-a3b.mq4r"
+registry_tag = "ornith-1.5:35b-a3b-mq4r"
+
+[models."ornith-1.5:35b-a3b-mq4r".overrides.generation]
+# temperature 0.2 + repeat_penalty 1.5 by request — the same near-greedy,
+# strongly de-repeated profile as the 3.6 MoE.
+#
+# FLAGGED AS A DEVIATION, and a wider one here than on the 3.6: this tag's
+# registry recommendation is temperature 0.6, top_p 0.95, top_k 20,
+# presence_penalty 0.0, repeat_penalty 1.0 — the parent card's values, validated
+# with thinking on and off under VMM. Only a value written here outranks the
+# registry, so these two keys are the whole deviation; top_p/top_k/
+# presence_penalty still come from the registry.
+#
+# The risk noted on the 3.6 block is unchanged: a near-greedy temperature is
+# where repetition loops live, and hipfire's own note on repeat_penalty reads
+# "Kept low; higher values harm some MQ4 greedy paths" — 1.5 on an MQ4 MoE body
+# at temp 0.2 leans on the penalties (this key, the global n-gram loop guard) to
+# suppress loops rather than on sampling diversity. If output degrades —
+# language mixing, stray tokens, dropped structure — walk repeat_penalty back
+# toward 1.1 first, then raise temperature toward the registry's 0.6. The
+# card's own value for this key is 1.0.
+#
+# presence_penalty 1.5 — pinned to MATCH the 3.6 profile, NOT because Ornith's
+# card asks for it: this tag's registry recommendation is presence_penalty 0.0,
+# so a literal copy of this file would leave Ornith at 0.0 and silently weaken
+# the profile. The 3.6 block's own rationale names this key as one of the three
+# loop suppressors the near-greedy temp 0.2 profile leans on (with
+# repeat_penalty 1.5 and the global n-gram loop guard), which is why it is
+# pinned here rather than inherited. Revert by deleting this key if Ornith's
+# output degrades — of the three, presence penalty is the cheapest to blame.
+presence_penalty = 1.5
+temperature = 0.2
+repeat_penalty = 1.5
+
+[models."ornith-1.5:35b-a3b-mq4r".overrides.memory]
+# 163840 = 160K, raised from 128K on 2026-09-28.
+#
+# RAISING the cap is free: kv_backend = vmm (pinned below) makes it a virtual
+# reservation whose backing pages appear only as the sequence actually grows —
+# measured on the 3.8 entry, 131072 -> 204800 moved load-time VRAM by 60 MB.
+#
+# FILLING it is not free, and this is the part to watch. The artifact is 18.70 GB
+# (uniform MQ4G256V2/qt44, --no-q8-router, zero qt13/qt15) plus a 0.48 GB MTP head
+# against 25.75 GB usable, i.e. ~6.5 GB for KV growth plus working buffers. KV per
+# token for THIS artifact is still unmeasured; at the 3.8 entry's measured
+# ~42,200 B/token a 160K fill needs ~6.9 GB, just past that budget. So 160K is
+# advertised-but-may-not-fill, on the precedent of the 3.6 35B (reached 150K
+# filled at 25.21 / 25.75 GB). Overrun stays the clean
+# `prefill: HipError(2): hipMemCreate: out of memory`, not a loader wedge.
+max_seq = 163840
+# q8. The registry already declares default_kv_mode = q8 for this tag, so this
+# is a pin for independence from registry updates rather than an override.
+# (Note the sibling ornith-1.5:35b-a3b does the same; only the *-mq4r 3.6 entry
+# lacked a declared default.)
+#
+# kv_backend vmm — pinned for parity, and load-critical rather than cosmetic.
+# The 3.6 tag receives kv_backend = vmm FROM ITS REGISTRY ENTRY; the ornith entry
+# declares no kv_backend, so a literal copy of this file would leave ornith on
+# the built-in `contiguous`. Contiguous allocates the whole 128K KV at load;
+# VMM reserves a stable virtual range and grows the physical backing
+# page-aligned as the sequence grows (measured on the 3.8 entry: raising the cap
+# 131072 -> 204800 changed load-time VRAM from 18.57 GB to 18.48 GB, i.e.
+# nothing). The 3.6 35B is the evidence that this VRAM budget needs VMM:
+# 18.7 GB of weights + 0.47 GB MTP head against 25.75 GB usable, and it loads
+# and serves at 20.24 / 25.75 GB with the MTP head resident at max_seq = 131072.
+# NOT yet verified on ornith — the GPU is in a degraded state and cannot load —
+# so if the first load fails, this is the first key to revert.
+kv_backend = "vmm"
+kv_cache = "q8"
+
+[models."ornith-1.5:35b-a3b-mq4r".overrides.speculation]
+# MTP, from the .mtp sidecar the pull collected (ornith-1.5-35b-a3b.mtp).
+# The loader finds it with no flag: it looks for <trunk-stem>.mtp next to the
+# trunk, logs "MTP head loaded (sidecar ...)", then sets mtp_weights_present,
+# which is what auto mode keys off. mode and mtp are FORCED rather than left
+# "auto" so the mechanism does not depend on a cascade — this tag publishes no
+# dflash/dspark sidecar, so MTP is the only candidate. A forced mechanism whose
+# prerequisites are missing falls back to plain AR with a warning, so this is safe.
+#
+# !! HEAD PROVENANCE — this is NOT the MTP head from the Ornith 1.5 release.
+# The repo ships a REPLACEMENT head derived from
+# shisa-ai/Ornith-1.5-35B-A3B-MTP-ONLY (Apache-2.0), warm-started from Qwen3.6's
+# MTP weights and KL-distilled against Ornith 1.5 hidden states. The base
+# release's head drafts poorly: its mtp.* tensors carry std exactly 0.0200 (the
+# config's initializer_range) with clean Gaussian statistics, it reports ~13%
+# acceptance upstream (ornith-ai/Ornith-1.5-35B-A3B discussion #10), and it was
+# measured independently in both hipfire and llama.cpp to accept the first
+# drafted token at 0.82-0.93 and then collapse (hipfire 0.29 at depth 2,
+# llama.cpp 0.15). With that head speculative decoding is SLOWER than plain AR.
+# So: do not "fix" this by swapping in the base model's head, and do not lose
+# the .mtp on a re-pull (a plain AR load is the silent symptom).
+#
+# The q8 proposal graph stays OFF (HIPFIRE_MTP_PROPOSAL_GRAPH unset), inherited
+# from the 3.6 decision (token-identical; neutral/slightly negative on the A3B
+# K=5 smoke) rather than re-measured on ornith.
+#
+# n-gram-modulated drafting needs no key here: the MTP drafter composes an
+# NgramModPool by default (production triple 24/48/64, HIPFIRE_NGRAM_MOD_*).
+# That composition is the card's gfx1151 headline — ~150 tok/s / tau 5.43 /
+# accept 0.937, versus 77.4 tok/s / tau 2.5 / accept 0.61 for K=3 MTP without
+# it, and ~70 tok/s plain AR.
+#
+# Acceptance floor p_min: gfx1100 takes the validated RDNA3-dGPU default of 0.6
+# (override with HIPFIRE_MTP_P_MIN).
+mode = "mtp"
+mtp = "on"
+mtp_k = 3
