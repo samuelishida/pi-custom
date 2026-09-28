@@ -82,6 +82,18 @@ registry_tag = "qwen3.6:35b-a3b-mq4r"
 #   hipfire config qwen3.6:35b-a3b-mq4r set generation.presence_penalty 0.0
 temperature = 0.6
 
+# 1.1 by request -- a deliberate deviation: this model's card says
+# repetition_penalty 1.0 for every profile (general, coding and instruct).
+#
+# Why it is worth knowing before raising further: hipfire's own note on this key
+# reads "Kept low; higher values harm some MQ4 greedy paths", and this is an MQ4
+# MoE body. 1.1-1.5 is the usual band for breaking repetition on quantized MoE
+# models; if output starts to degrade (language mixing, stray tokens, dropped
+# structure) this is the first knob to walk back -- before touching
+# presence_penalty (registry 1.5) or the global n-gram loop guard, which cover
+# repetition without altering the sampling distribution.
+repeat_penalty = 1.1
+
 [models."qwen3.6:35b-a3b-mq4r".overrides.memory]
 # 131072 = 128K, as requested.
 #
