@@ -109,7 +109,14 @@ const PROMPT_OVERHEAD_TOKENS = 600; // summarization system prompt + wrappers + 
 //    Local models occasionally stop emitting tokens entirely. We track the last
 //    streaming/tool activity and, if an agent turn runs with no activity for
 //    STALL_TIMEOUT_MS, gently re-prompt it to resume.
-const STALL_TIMEOUT_MS = 360_000; // no activity in 6 min -> treat as hung, then retry by re-prompting
+// Raised 360s -> 600s on 2026-09-28: a local 35B at long context can go many
+// minutes with no streamed token (one prefill or think span, or a tool the model
+// declared its own long deadline for) while still making progress, so the 6-min
+// window fired on turns that were not hung. Cost of the raise: a genuinely stuck
+// turn now waits 10 min before the first nudge. Declared-long tools are still
+// excluded individually via STALL_TOOL_MARGIN_MS + the declared-deadline parse
+// below, so this window governs mostly model silence.
+const STALL_TIMEOUT_MS = 600_000; // no activity in 10 min -> treat as hung, then retry by re-prompting
 const STALL_POLL_MS = 5_000; // watchdog poll interval
 const STALL_RETRY_CAP = 2; // max retries per run before giving up
 const HUNG_TOOL_ABORT_CAP = 1; // max aborts per run for a hung/crashed tool call
@@ -654,7 +661,7 @@ export default function guardrail(pi: ExtensionAPI) {
       // like `(timeout 420s)`, the command will self-terminate at ~420s and the
       // tool result flows back to the model normally. Without this, a long
       // sleep was treated as an undeclared tool that could hang forever, and
-      // the watchdog aborted it at STALL_TIMEOUT_MS (360s) — mid-sleep, before
+      // the watchdog aborted it at STALL_TIMEOUT_MS — mid-sleep, before
       // it would have returned on its own. Take the max sleep duration (a chain
       // may stage several sleeps). Note `while true; do sleep 1; done` yields
       // only 1s here, so genuinely infinite loops are still caught at the stall
