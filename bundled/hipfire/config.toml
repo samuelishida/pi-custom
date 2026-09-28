@@ -18,3 +18,32 @@ idle_timeout_seconds = 0
 # comfortably, otherwise the forced think-cap close has no room to emit
 # the closing tag and the turn fails closed (dropped stream).
 max_tokens = 65536
+
+# --- sampling is deliberately NOT set here ------------------------------------
+# The global (config.toml) layer OUTRANKS the registry. Setting temperature/top_p/
+# presence_penalty globally therefore masked per-model recommendations -- it turned
+# the 3.6 MoE's recommended presence_penalty 1.5 into 0.0, and would have flattened
+# the 39 of 82 registry entries that carry their own recommendation (37 of them
+# recommend temperature 1.0, 14 recommend presence_penalty 1.5).
+#
+# So sampling stays per model:
+#   * registry `recommended_settings` supplies the vendor values for both models;
+#   * ~/.hipfire/models.toml pins what we deliberately override (temperature 0.6
+#     on both, per request).
+# Inspect with:  hipfire config <tag> | grep generation.
+
+# --- loop guard ---------------------------------------------------------------
+# Force EOS when any 4-gram token sequence repeats this many times inside
+# loop_guard_window tokens; 0 disables (the built-in default). Operates on token
+# ids in the generate loop (crates/hipfire-runtime/src/loop_guard.rs), so it costs
+# nothing measurable and fires before the token budget is burned, unlike a text
+# regex polled every N seconds. On trigger the daemon emits
+# "ngram loop detected (4gram repeated Nx in last M tokens) - forcing EOS" and
+# ends the turn.
+#
+# 5 allows four legitimate occurrences of any 4-gram inside the window and stops a
+# repeated sentence on its 5th pass (~40 wasted tokens). The guard's own unit
+# tests demonstrate 8; raise toward that if it ever truncates legitimately
+# repetitive output (data dumps, repeated stanzas, tabular code).
+loop_guard_threshold = 5
+loop_guard_window = 256

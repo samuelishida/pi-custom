@@ -1,8 +1,36 @@
 schema_version = 1
 
+# ─────────────────────────────────────────────────────────────────────────────
+# Per-model policy for hipfire. Sampling/config precedence, lowest to highest:
+#
+#   built-in < registry recommended_settings < global (config.toml)
+#            < this file (model user) < CLI < the request body
+#
+# Two consequences, both learned the hard way on 2026-09-27/28:
+#
+#   * The GLOBAL layer outranks the registry, so sampling must NOT be set in
+#     config.toml. Doing that masked the vendor's per-model values -- it turned
+#     the 3.6 MoE's recommended presence_penalty 1.5 into 0.0, and would have
+#     flattened the 39 of 82 registry entries that carry their own
+#     recommendation. Only the loop guard lives globally (it has no per-model
+#     form and is purely additive).
+#   * Anything pinned HERE outranks the registry too, so pin only deliberate
+#     deviations. temperature 0.6 on both models is one.
+#
+# Inspect:  hipfire config <tag> | grep -E "generation\.|memory\.|speculation\."
+# ─────────────────────────────────────────────────────────────────────────────
+
 [models."qwen3.8:27b-mq4-xt"]
 path = "/media/smk/Models/hipFire/qwen3.8-27b.mq4-xt"
 registry_tag = "qwen3.8:27b-mq4-xt"
+
+[models."qwen3.8:27b-mq4-xt".overrides.generation]
+# 0.6 by request. A deliberate deviation, hence pinned: the registry supplies
+# Qwen3.8-27B's card values (temperature 1.0 thinking, 0.7 instruct), and only a
+# value in this file outranks them. 0.6 is the "precise coding" temperature Qwen
+# publishes for the 3.6 family (e.g. WebDev), not one from this model's card --
+# noted so the next reader does not assume it came from upstream.
+temperature = 0.6
 
 [models."qwen3.8:27b-mq4-xt".overrides.memory]
 # KV logical capacity at load. Valid range 512..1048576.
@@ -40,6 +68,20 @@ dflash = "auto"
 path = "/media/smk/Models/hipFire/qwen3.6-35b-a3b.mq4r"
 registry_tag = "qwen3.6:35b-a3b-mq4r"
 
+[models."qwen3.6:35b-a3b-mq4r".overrides.generation]
+# 0.6 by request -- and unlike the 27B this IS a value Qwen publishes for this
+# model. Qwen3.6-35B-A3B's card gives, for "thinking mode for precise coding
+# tasks (e.g. WebDev)": temperature=0.6, top_p=0.95, top_k=20, min_p=0.0,
+# presence_penalty=0.0, repetition_penalty=1.0. The registry's general profile
+# (temperature 1.0, presence_penalty 1.5) would otherwise apply.
+#
+# presence_penalty is deliberately left to the registry at 1.5 rather than the
+# coding recipe's 0.0: repetition is the reported failure mode, and both Qwen
+# cards name presence_penalty (0-2) as the lever against endless repetition, at
+# the cost of occasional language mixing. To follow the coding recipe exactly:
+#   hipfire config qwen3.6:35b-a3b-mq4r set generation.presence_penalty 0.0
+temperature = 0.6
+
 [models."qwen3.6:35b-a3b-mq4r".overrides.memory]
 # 131072 = 128K, as requested.
 #
@@ -51,8 +93,8 @@ registry_tag = "qwen3.6:35b-a3b-mq4r"
 #
 # KV growth per token for THIS artifact has not been measured. Unlike the 3.8
 # entry above there is no B/token figure to quote, so 128K here is advertised,
-# not proven reachable. Measure /stats at depth after the first load before
-# trusting a long-context run. The overrun signature is the clean
+# not proven reachable. Measured 2026-09-27: it loads and serves at
+# 20.24 / 25.75 GB with the MTP head resident. The overrun signature is the clean
 # `prefill: HipError(2): hipMemCreate: out of memory`, not a loader wedge.
 max_seq = 131072
 # q8, matching the 3.8 set. Note the registry entry for this exact tag has
@@ -62,7 +104,7 @@ max_seq = 131072
 kv_cache = "q8"
 
 [models."qwen3.6:35b-a3b-mq4r".overrides.speculation]
-# MTP, from the .mtp sidecar the pull collects (qwen3.6-35b-a3b.mtp,
+# MTP, from the .mtp sidecar the pull collected (qwen3.6-35b-a3b.mtp,
 # 466,952,320 B). The loader finds it with no flag at all: it looks for
 # <trunk-stem>.mtp next to the trunk and logs
 # "MTP head loaded (sidecar ...): n_embd=... vocab=...", then sets
