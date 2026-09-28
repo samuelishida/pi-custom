@@ -4,3 +4,6 @@ pi-custom-bundled-distribution:
 hipfire-pi-long-session-failures:
   file: hipfire-pi-long-session-failures.md
   description: Read when pi+hipfire sessions fail mid-run (terminated / 503 / retries), or when changing hipfire config, the guardrail extension, the hipfire fork, or the prefill keepalive patch.
+pi-harness-subagent-contract:
+  file: pi-harness-subagent-contract.md
+  description: Read before writing or debugging anything that spawns a subagent from a skill or agent profile (agent_file, subagent_type, tool policy, model routing).
