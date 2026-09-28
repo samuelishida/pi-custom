@@ -76,6 +76,10 @@ install_file "$SRC/models.toml" "$HIPFIRE_DIR/models.toml" "hipfire models.toml"
 # ExecStartPre: clears stale serve/daemon pid records (a zombie still answers
 # kill -0, which makes `hipfire serve` die with "already running").
 install_file "$SRC/serve-preclean.sh" "$HIPFIRE_DIR/bin/serve-preclean.sh" "serve-preclean.sh"
+# Model switch: writes serve.default_model and makes that model resident (start
+# the unit, or trigger the daemon's own reload). The unit deliberately names no
+# model, so this script is the single place a switch happens.
+install_file "$SRC/hipfire-use-model.sh" "$HIPFIRE_DIR/bin/hipfire-use-model.sh" "hipfire-use-model.sh"
 # Watchdog: retries failed starts, self-heals loader wedges, keeps the model
 # resident. Units land in systemd; the timer is enabled below.
 install_file "$SRC/hipfire-watchdog.sh" "$HIPFIRE_DIR/bin/hipfire-watchdog.sh" "hipfire-watchdog.sh"
@@ -166,7 +170,7 @@ NODE
 	fi
 }
 
-chmod +x "$HIPFIRE_DIR/bin/serve-preclean.sh" "$HIPFIRE_DIR/bin/hipfire-watchdog.sh" 2>/dev/null || true
+chmod +x "$HIPFIRE_DIR/bin/serve-preclean.sh" "$HIPFIRE_DIR/bin/hipfire-watchdog.sh" "$HIPFIRE_DIR/bin/hipfire-use-model.sh" 2>/dev/null || true
 
 run_models_step
 

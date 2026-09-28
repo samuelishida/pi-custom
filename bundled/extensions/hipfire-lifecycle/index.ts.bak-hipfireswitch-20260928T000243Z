@@ -42,7 +42,6 @@ const PROVIDER = "hipfire";
 const UNIT = "hipfire.service";
 const BASE = "http://127.0.0.1:11435";
 const LOG = join(homedir(), ".hipfire", "lifecycle.log");
-const USE_MODEL = join(homedir(), ".hipfire", "bin", "hipfire-use-model.sh");
 
 type NotifyLevel = "info" | "warning" | "error";
 
@@ -88,7 +87,34 @@ async function getJson(path: string, timeoutMs = 2500): Promise<Record<string, a
 	}
 }
 
-
+/**
+ * Poll /health until hipfire reports a resident model.
+ *
+ * The budget has to survive a loader wedge, because that is a real, recurring
+ * failure here: the daemon's main thread spins waiting for a GPU completion that
+ * never arrives and only a restart clears it (see the loader-wedge note in
+ * .agents/learnings/hipfire-pi-long-session-failures.md). The hipfire-watchdog
+ * timer detects that in ~50s and does a clean restart, so switching to hipfire
+ * can legitimately need: detection (~50s) + restart (~10s) + load (~90-150s).
+ * 240s sat exactly on that edge and reported "still prewarming" while the
+ * watchdog was mid-heal; 480s clears one full heal cycle.
+ *
+ * Returns `{ model }` when resident, otherwise the last `loading_model` seen, so
+ * the caller can report what was actually happening instead of guessing.
+ */
+async function waitForModel(maxMs: number): Promise<{ model?: string; loading?: string }> {
+	const deadline = Date.now() + maxMs;
+	let lastLoading = "";
+	while (Date.now() < deadline) {
+		const health = await getJson("/health");
+		const model = health?.model;
+		if (typeof model === "string" && model.length > 0) return { model };
+		const loading = health?.loading_model;
+		if (typeof loading === "string" && loading.length > 0) lastLoading = loading;
+		await new Promise((resolve) => setTimeout(resolve, 2000));
+	}
+	return { loading: lastLoading };
+}
 
 export default function (pi: ExtensionAPI) {
 	let transitioning = false;
@@ -110,12 +136,6 @@ export default function (pi: ExtensionAPI) {
 		// starting pi straight onto an ollama model still frees the GPU for it.
 		const firstSelection = event.previousModel === undefined;
 		const enteringHipfire = toHipfire && !fromHipfire;
-		// hipfire -> hipfire on a DIFFERENT tag. The daemon serves exactly one model,
-		// so this is a real switch: it used to fall through to
-		// `skip (no hipfire transition)` and pi then asked for a model that was not
-		// loaded. Same id = no work; the switch path re-checks /health anyway.
-		const switchingHipfire =
-			toHipfire && fromHipfire && event.model?.id !== event.previousModel?.id;
 		const leavingHipfire = !toHipfire && (fromHipfire || firstSelection);
 
 		if (transitioning) {
@@ -123,7 +143,7 @@ export default function (pi: ExtensionAPI) {
 			return;
 		}
 
-		if (!enteringHipfire && !switchingHipfire && !leavingHipfire) {
+		if (!enteringHipfire && !leavingHipfire) {
 			log(`skip (no hipfire transition) ${desc}`);
 			return;
 		}
@@ -167,40 +187,39 @@ export default function (pi: ExtensionAPI) {
 				return;
 			}
 
-			// ---- entering hipfire, or switching between hipfire models ----
-			// One model fits in VRAM, so which model hipfire serves is a single
-			// decision and hipfire-use-model.sh owns it: it writes serve.default_model
-			// (so any later start prewarms the selected model) and then makes that
-			// model resident, either by starting the unit or by asking the running
-			// daemon to reload. ServeRuntime::ensure_model reloads in-daemon when a
-			// request names a different tag, so no service restart is needed.
-			const desired = event.model?.id ?? "";
-			notify(
-				switchingHipfire
-					? `hipfire: switching to ${desired} (unloads the current model)`
-					: `hipfire: loading ${desired}`,
-				"info",
-			);
-			const switched = spawnSync(USE_MODEL, [desired], {
-				encoding: "utf8",
-				timeout: 900_000,
-			});
-			const out = `${switched.stdout ?? ""}${switched.stderr ?? ""}`.trim();
+			// ---- entering hipfire: make sure it is up ----
+			// Decide from /health, not from the unit state: `systemctl is-active`
+			// reports "active" for a unit whose server is holding a wedged load, and
+			// waiting on that would burn the whole budget on a daemon the watchdog is
+			// about to kill. Only start when there is no model AND nothing loading.
+			const before = await getJson("/health");
+			const noModel = before === null || typeof before.model !== "string";
+			const noLoad = before === null || typeof before.loading_model !== "string";
+			if (noModel && noLoad && systemctl("is-active", 10_000).out !== "active") {
+				const started = systemctl("start", 300_000);
+				if (!started.ok) {
+					log(`enter: start FAILED (${started.out}) | ${desc}`);
+					notify(`hipfire start failed: ${started.out}`, "error");
+					return;
+				}
+			}
+
+			const { model, loading } = await waitForModel(480_000);
 			log(
-				`enter: ${desired} -> exit ${switched.status} :: ${out.replace(/\n/g, " | ")} | ${desc}`,
+				`enter: ${model ? `ready (${model})` : `NOT ready (loading=${loading || "none"})`} | ${desc}`,
 			);
-			if (switched.status === 0) {
-				notify(`hipfire ready: ${desired}`, "info");
-			} else if (switched.status === 3) {
+			if (model) {
+				notify(`hipfire ready: ${model}`, "info");
+			} else if (loading) {
 				notify(
-					`hipfire loader wedged on ${desired} - the watchdog restarts the unit and prewarms it; retry in a minute`,
+					`hipfire is stuck loading ${loading} - the watchdog restarts the unit when the loader wedges; retry in a minute`,
 					"warning",
 				);
-			} else if (switched.status === 2) {
-				notify(`hipfire still loading ${desired} - retry in a minute`, "warning");
 			} else {
-				const tail = out.split("\n").filter(Boolean).slice(-2).join(" ");
-				notify(`hipfire could not switch to ${desired}: ${tail || "see /hipfire status"}`, "error");
+				notify(
+					"hipfire is up but nothing is loading and no model is resident - the watchdog will warm it; retry in a minute",
+					"warning",
+				);
 			}
 		} catch (err) {
 			log(`ERROR ${(err as Error).message} | ${desc}`);

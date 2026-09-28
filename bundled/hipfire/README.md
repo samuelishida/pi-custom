@@ -329,3 +329,74 @@ In pi, pick the matching `hipfire` model in the picker -- pi sends the model id
 in the request, so a mismatch means the daemon loads a different model than the
 one you selected. The hotswap extension only owns the hipfire-vs-other-provider
 transition, not hipfire-model-vs-hipfire-model.
+
+### How a model switch actually works
+
+`systemctl --user stop hipfire` is the *leave* path (it frees the GPU for
+ollama). Switching between the two hipfire models is a different operation and
+does not restart the service:
+
+```sh
+~/.hipfire/bin/hipfire-use-model.sh qwen3.6:35b-a3b-mq4r   # makes this one resident
+~/.hipfire/bin/hipfire-use-model.sh                        # (no arg) prints usage
+/home/smk/.hipfire/bin/hipfire-use-model.sh qwen3.8:27b-mq4-xt
+```
+
+It does two things:
+
+1. writes `serve.default_model` in `~/.hipfire/config.toml` (one line, backed up,
+   comments preserved), so any later start prewarms the selected model instead of
+   drifting back to the old one;
+2. makes that model resident -- if the unit is inactive it starts it, and if the
+   unit is active it fires one 1-token request for the tag.
+
+Step 2 works because of `ServeRuntime::ensure_model`
+(`crates/hipfire-cli/src/serve/mod.rs:1114`): it computes
+`must_reload = self.current_path != Some(&path)` from the **request's** model
+field and loads that model with its own per-model config
+(`resolved_for_model`). So `qwen3.6:35b-a3b-mq4r` requested while the 27B is
+resident unloads the 27B and loads the 35B in place. (If the tag is not local at
+all, `ensure_model` even calls `pull_command` first.)
+
+**Why not `systemctl restart`:** an in-daemon reload avoids handing port 11435 to
+a fresh serve while the GPU is still releasing the old model -- the race that
+produces loader wedges. And if the load *does* wedge, the watchdog's clean
+restart prewarms `serve.default_model`, i.e. the model just selected, so the heal
+lands on the intended model instead of fighting it.
+
+Exit codes: `0` resident, `2` still loading at the deadline, `3` loader wedged
+(hand off to the watchdog), `1` error. The pi extension
+(`hipfire-lifecycle`) calls this script for both "entering hipfire" and
+"hipfire -> hipfire on a different tag"; the latter used to be skipped entirely
+with `skip (no hipfire transition)`, which left pi asking for a model the daemon
+was not serving.
+
+Verified 2026-09-27: `serve.default_model` = `qwen3.6:35b-a3b-mq4r`, the 35B came
+up resident, and its load log shows the configuration actually applied:
+
+```
+MTP head loaded (sidecar /media/smk/Models/hipFire/qwen3.6-35b-a3b.mtp): n_embd=2048 vocab=248320
+KV cache: Q8 vmm (10/40 layers carry KV; mapped_prefix=3855 / physical_cap=131072 / max_seq=131072)
+[redline] enabling fail-closed retained default on gfx1100 (model_arch=qwen3_5_moe, drafter=mtp, transport=pm4)
+weight sweep: 91826 ms      VRAM 20.24 / 25.75 GB
+```
+
+### Other clients
+
+* **pi**: `~/.pi/agent/models.json` carries both hipfire entries (163840 and
+  131072 context). Pick the matching one; pi sends the id in the request, and a
+  mismatched id makes hipfire try to *pull* that name rather than switch.
+* **VS Code / Continue**: `~/.continue/config.yaml` has both entries as
+  `provider: openai` with `apiBase: http://127.0.0.1:11435/v1`.
+* **Codex: not possible without a proxy.** `codex-cli >= 0.156` removed
+  `wire_api = "chat"` (the binary contains `` `wire_api = "chat"` is no longer
+  supported. ``) and hipfire serve exposes no `/v1/responses` -- its routes are
+  `/health`, `/metrics`, `/stats`, `/v1/models`, `/v1/chat/completions`,
+  `/v1/images/{generations,edits}`. The unit's config therefore keeps its
+  hipfire provider block commented out (that was already discovered on
+  2026-09-24). Using hipfire from codex needs a Responses->chat translating
+  proxy in front of 11435.
+* **VS Code / deepseek-copilot**: `deepseek-copilot.baseUrl` still points at
+  `http://127.0.0.1:8000/v1`, which was vLLM and is no longer installed, and its
+  `modelIdOverrides` all name `qwen3.8-27b-ad`, the vLLM served name. To revive
+  it, point the baseUrl at hipfire and use a tag hipfire actually serves.

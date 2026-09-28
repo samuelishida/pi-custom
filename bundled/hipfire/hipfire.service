@@ -1,5 +1,5 @@
 [Unit]
-Description=hipfire OpenAI-compatible server (int8 q8 KV, 160K ctx, gfx1100)
+Description=hipfire OpenAI-compatible server (q8 KV, model from serve.default_model, gfx1100)
 Documentation=https://github.com/warpfront/hipfire
 After=network-online.target
 
@@ -41,7 +41,18 @@ Environment=HIPFIRE_ROCM_PATH=/opt/rocm
 #Environment=HIPFIRE_DFLASH_DRAFT=/media/smk/Models/hipFire/qwen38-27b-dflash-mq4.hfq
 # gfx11 iu4-direct MMQ prefill: +7.6% at 88K, +32% at short prefills.
 Environment=HIPFIRE_GFX11_MQ4V2_IU4=1
-ExecStart=/bin/bash -c '/home/smk/.hipfire/bin/hipfire serve qwen3.8:27b-mq4-xt 127.0.0.1 11435 -d --kv-mode q8 --idle-timeout 0 && sleep 1 && /home/smk/.hipfire/bin/serve-pid.sh > %t/hipfire.pid'
+# NO model token in ExecStart, on purpose. The model is resolved from
+# serve.default_model in ~/.hipfire/config.toml (and per-model KV/spec policy
+# from models.toml). `resolve_serve_positionals` treats a non-model positional
+# as the host, so `serve 127.0.0.1 11435` is valid with the model left
+# unresolved. This is what lets a switch be one config line:
+#   ~/.hipfire/bin/hipfire-use-model.sh qwen3.6:35b-a3b-mq4r
+# which rewrites serve.default_model and then either starts this unit (which
+# prewarms it) or asks the running daemon to reload it via the request path
+# (ServeRuntime::ensure_model, serve/mod.rs:1114). Pinning a tag here instead
+# would silently diverge from serve.default_model -- which is how a bare
+# `hipfire restart` once loaded qwen3.5:9b.
+ExecStart=/bin/bash -c '/home/smk/.hipfire/bin/hipfire serve 127.0.0.1 11435 -d --kv-mode q8 --idle-timeout 0 && sleep 1 && /home/smk/.hipfire/bin/serve-pid.sh > %t/hipfire.pid'
 ExecStop=/home/smk/.hipfire/bin/hipfire stop --force
 ExecStopPost=/bin/rm -f %t/hipfire.pid
 TimeoutStartSec=1800
